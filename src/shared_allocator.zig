@@ -166,7 +166,7 @@ pub fn JdzAllocator(comptime config: JdzAllocConfig) type {
 
         fn allocate(self: *Self, size: usize) ?[*]u8 {
             const arena = @call(.always_inline, SharedArenaHandler.getArena, .{&self.arena_handler}) orelse return null;
-            defer @call(.always_inline, Arena.release, .{arena});
+            // defer @call(.always_inline, Arena.release, .{arena});
 
             if (size <= small_max) {
                 const size_class = @call(.always_inline, utils.getSmallSizeClass, .{size});
@@ -671,7 +671,10 @@ test "consecutive overalignment" {
 }
 
 test "small allocations parallel" {
-    var jdz_allocator = JdzAllocator(.{ .thread_safe = true }).init();
+    var jdz_allocator = JdzAllocator(.{
+        .thread_safe = true,
+        .shared_arena_batch_size = 2
+    }).init();
     defer jdz_allocator.deinit();
 
     const allocator = jdz_allocator.allocator();
