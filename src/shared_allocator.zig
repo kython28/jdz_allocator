@@ -75,21 +75,23 @@ pub fn JdzAllocator(comptime config: JdzAllocConfig) type {
                 .vtable = &.{
                     .alloc = alloc,
                     .resize = resize,
+                    .remap = remap,
                     .free = free,
                 },
             };
         }
 
-        fn alloc(ctx: *anyopaque, len: usize, log2_align: u8, ret_addr: usize) ?[*]u8 {
+        fn alloc(ctx: *anyopaque, len: usize, log2_align: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
             _ = ret_addr;
 
             const self: *Self = @ptrCast(@alignCast(ctx));
 
-            if (log2_align <= small_granularity_shift) {
+            const log2_align_value = @intFromEnum(log2_align);
+            if (log2_align_value <= small_granularity_shift) {
                 return @call(.always_inline, allocate, .{ self, len });
             }
 
-            const alignment = @as(usize, 1) << @intCast(log2_align);
+            const alignment = @as(usize, 1) << @intCast(log2_align_value);
             const size = @max(alignment, len);
 
             if (size <= span_header_size) {
@@ -119,10 +121,10 @@ pub fn JdzAllocator(comptime config: JdzAllocConfig) type {
             return null;
         }
 
-        fn resize(ctx: *anyopaque, buf: []u8, log2_align: u8, new_len: usize, ret_addr: usize) bool {
+        fn resize(ctx: *anyopaque, buf: []u8, log2_align: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
             _ = ret_addr;
             _ = ctx;
-            const alignment = @as(usize, 1) << @intCast(log2_align);
+            const alignment = @as(usize, 1) << @intCast(@intFromEnum(log2_align));
             const aligned = (@intFromPtr(buf.ptr) & (alignment - 1)) == 0;
 
             const span = @call(.always_inline, utils.getSpan, .{buf.ptr});
@@ -136,7 +138,15 @@ pub fn JdzAllocator(comptime config: JdzAllocConfig) type {
             return aligned and new_len <= max_len;
         }
 
-        fn free(ctx: *anyopaque, buf: []u8, log2_align: u8, ret_addr: usize) void {
+        fn remap(ctx: *anyopaque, buf: []u8, alignment: std.mem.Alignment, new_len: usize, return_address: usize) ?[*]u8 {
+            if (resize(ctx, buf, alignment, new_len, return_address)) {
+                return buf.ptr;
+            }
+            return null;
+        }
+
+
+        fn free(ctx: *anyopaque, buf: []u8, log2_align: std.mem.Alignment, ret_addr: usize) void {
             _ = ctx;
             _ = ret_addr;
             _ = log2_align;
@@ -257,7 +267,7 @@ test "small allocations - free in reverse order" {
         try list.append(ptr);
     }
 
-    while (list.popOrNull()) |ptr| {
+    while (list.pop()) |ptr| {
         allocator.destroy(ptr);
     }
 }
@@ -435,7 +445,7 @@ test "shrink large object to large object with larger alignment" {
         try stuff_to_free.append(slice);
         slice = try allocator.alignedAlloc(u8, 16, alloc_size);
     }
-    while (stuff_to_free.popOrNull()) |item| {
+    while (stuff_to_free.pop()) |item| {
         allocator.free(item);
     }
     slice[0] = 0x12;
@@ -485,7 +495,7 @@ test "realloc large object to larger alignment" {
         try stuff_to_free.append(slice);
         slice = try allocator.alignedAlloc(u8, 16, 8192 + 50);
     }
-    while (stuff_to_free.popOrNull()) |item| {
+    while (stuff_to_free.pop()) |item| {
         allocator.free(item);
     }
     slice[0] = 0x12;
@@ -568,8 +578,8 @@ test "small alignment small alloc" {
 
     const allocator = jdz_allocator.allocator();
 
-    const slice = allocator.rawAlloc(1, 4, @returnAddress()).?;
-    defer allocator.rawFree(slice[0..1], 4, @returnAddress());
+    const slice = allocator.rawAlloc(1, .@"4", @returnAddress()).?;
+    defer allocator.rawFree(slice[0..1], .@"4", @returnAddress());
 
     try std.testing.expect(@intFromPtr(slice) % std.math.pow(u16, 2, 4) == 0);
 }
@@ -584,8 +594,8 @@ test "medium alignment small alloc" {
 
     if (alignment > page_alignment) return error.SkipZigTest;
 
-    const slice = allocator.rawAlloc(1, alignment, @returnAddress()).?;
-    defer allocator.rawFree(slice[0..1], alignment, @returnAddress());
+    const slice = allocator.rawAlloc(1, @enumFromInt(alignment), @returnAddress()).?;
+    defer allocator.rawFree(slice[0..1], @enumFromInt(alignment), @returnAddress());
 
     try std.testing.expect(@intFromPtr(slice) % std.math.pow(u16, 2, 4) == 0);
 }
@@ -596,8 +606,8 @@ test "page size alignment small alloc" {
 
     const allocator = jdz_allocator.allocator();
 
-    const slice = allocator.rawAlloc(1, page_alignment, @returnAddress()).?;
-    defer allocator.rawFree(slice[0..1], page_alignment, @returnAddress());
+    const slice = allocator.rawAlloc(1, @enumFromInt(page_alignment), @returnAddress()).?;
+    defer allocator.rawFree(slice[0..1], @enumFromInt(page_alignment), @returnAddress());
 
     try std.testing.expect(@intFromPtr(slice) % std.math.pow(u16, 2, page_alignment) == 0);
 }
@@ -608,8 +618,8 @@ test "small alignment large alloc" {
 
     const allocator = jdz_allocator.allocator();
 
-    const slice = allocator.rawAlloc(span_max, 4, @returnAddress()).?;
-    defer allocator.rawFree(slice[0..span_max], 4, @returnAddress());
+    const slice = allocator.rawAlloc(span_max, .@"4", @returnAddress()).?;
+    defer allocator.rawFree(slice[0..span_max], .@"4", @returnAddress());
 
     try std.testing.expect(@intFromPtr(slice) % std.math.pow(u16, 2, 4) == 0);
 }
@@ -624,8 +634,8 @@ test "medium alignment large alloc" {
 
     if (alignment > page_alignment) return error.SkipZigTest;
 
-    const slice = allocator.rawAlloc(span_max, alignment, @returnAddress()).?;
-    defer allocator.rawFree(slice[0..span_max], alignment, @returnAddress());
+    const slice = allocator.rawAlloc(span_max, @enumFromInt(alignment), @returnAddress()).?;
+    defer allocator.rawFree(slice[0..span_max], @enumFromInt(alignment), @returnAddress());
 
     try std.testing.expect(@intFromPtr(slice) % std.math.pow(u16, 2, 4) == 0);
 }
@@ -636,8 +646,8 @@ test "page size alignment large alloc" {
 
     const allocator = jdz_allocator.allocator();
 
-    const slice = allocator.rawAlloc(span_max, page_alignment, @returnAddress()).?;
-    defer allocator.rawFree(slice[0..span_max], page_alignment, @returnAddress());
+    const slice = allocator.rawAlloc(span_max, @enumFromInt(page_alignment), @returnAddress()).?;
+    defer allocator.rawFree(slice[0..span_max], @enumFromInt(page_alignment), @returnAddress());
 
     try std.testing.expect(@intFromPtr(slice) % std.math.pow(u16, 2, page_alignment) == 0);
 }

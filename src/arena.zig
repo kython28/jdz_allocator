@@ -52,6 +52,7 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
         const Self = @This();
 
         pub fn init(writer_lock: Lock, thread_id: ?std.Thread.Id) Self {
+            @setEvalBranchQuota(4 * @as(u32, large_class_count) * @max(config.map_cache_limit, config.large_cache_limit));
             var large_cache: [large_class_count]ArenaLargeCache = undefined;
             var map_cache: [large_class_count]ArenaMapCache = undefined;
 
@@ -456,7 +457,7 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
             if (map_count == span_count) map_count += 1;
 
             const alloc_size = map_count * span_size;
-            const span_alloc = self.backing_allocator.rawAlloc(alloc_size, page_alignment, @returnAddress()) orelse {
+            const span_alloc = self.backing_allocator.rawAlloc(alloc_size, @enumFromInt(page_alignment), @returnAddress()) orelse {
                 return null;
             };
             const span_alloc_ptr = @intFromPtr(span_alloc);
@@ -687,7 +688,7 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
             if (config.report_leaks) _ = self.span_count.fetchSub(span.span_count, .monotonic);
 
             const initial_alloc = @as([*]u8, @ptrFromInt(span.initial_ptr))[0..span.alloc_size];
-            self.backing_allocator.rawFree(initial_alloc, page_alignment, @returnAddress());
+            self.backing_allocator.rawFree(initial_alloc, @enumFromInt(page_alignment), @returnAddress());
         }
 
         pub inline fn cacheSpanOrFree(self: *Self, span: *Span) void {
