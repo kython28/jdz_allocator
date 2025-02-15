@@ -43,24 +43,28 @@ fn bench(num_threads: u32) !void {
     try jdz_global_mixed(num_threads);
     try c_mixed(num_threads);
     // try gpa_mixed(num_threads);
+    try smp_mixed(num_threads);
 
     try std.io.getStdOut().writer().print("==Small Alloc==\n", .{});
     try jdz_small(num_threads);
     try jdz_global_small(num_threads);
     try c_small(num_threads);
     // try gpa_small(num_threads);
+    try smp_small(num_threads);
 
     try std.io.getStdOut().writer().print("==Medium Alloc==\n", .{});
     try jdz_medium(num_threads);
     try jdz_global_medium(num_threads);
     try c_medium(num_threads);
     // try gpa_medium(num_threads);
+    try smp_medium(num_threads);
 
     try std.io.getStdOut().writer().print("==Big Alloc==\n", .{});
     try jdz_big(num_threads);
     try jdz_global_big(num_threads);
     try c_big(num_threads);
     // try gpa_big(num_threads);
+    try smp_big(num_threads);
 
     try std.io.getStdOut().writer().print("\n", .{});
 }
@@ -93,6 +97,12 @@ fn gpa_mixed(num_threads: u32) !void {
     defer _ = gpa.deinit();
 
     try runPerfTestAlloc("gpa/mixed", mixed_min, mixed_max, allocator, mixed_rounds, num_threads);
+}
+
+fn smp_mixed(num_threads: u32) !void {
+    const allocator = std.heap.smp_allocator;
+
+    try runPerfTestAlloc("smp/mixed", mixed_min, mixed_max, allocator, mixed_rounds, num_threads);
 }
 
 fn c_mixed(num_threads: u32) !void {
@@ -137,6 +147,12 @@ fn gpa_small(num_threads: u32) !void {
     try runPerfTestAlloc("gpa/small", small_min, small_max, allocator, small_rounds, num_threads);
 }
 
+fn smp_small(num_threads: u32) !void {
+    const allocator = std.heap.smp_allocator;
+
+    try runPerfTestAlloc("smp/small", small_min, small_max, allocator, small_rounds, num_threads);
+}
+
 ///
 /// Medium
 ///
@@ -170,6 +186,12 @@ fn gpa_medium(num_threads: u32) !void {
     defer _ = gpa.deinit();
 
     try runPerfTestAlloc("gpa/medium", medium_min, medium_max, allocator, medium_rounds, num_threads);
+}
+
+fn smp_medium(num_threads: u32) !void {
+    const allocator = std.heap.smp_allocator;
+
+    try runPerfTestAlloc("smp/medium", small_min, small_max, allocator, small_rounds, num_threads);
 }
 
 ///
@@ -206,6 +228,12 @@ fn gpa_big(num_threads: u32) !void {
     defer _ = gpa.deinit();
 
     try runPerfTestAlloc("gpa/big", big_min, big_max, allocator, big_rounds, num_threads);
+}
+
+fn smp_big(num_threads: u32) !void {
+    const allocator = std.heap.smp_allocator;
+
+    try runPerfTestAlloc("smp/big", small_min, small_max, allocator, small_rounds, num_threads);
 }
 
 ///
