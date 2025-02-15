@@ -58,6 +58,10 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
         }
 
         pub inline fn getArena(self: *Self) ?*Arena {
+            const mutex = &self.mutex;
+            mutex.lock();
+            defer mutex.unlock();
+
             const tid = getThreadId();
 
             return self.findOwnedThreadArena(tid) orelse
@@ -87,19 +91,6 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
 
                     continue;
                 };
-            }
-
-            return self.tryCreateArena();
-        }
-
-        fn tryCreateArena(self: *Self) ?*Arena {
-            const arena_batch = self.arena_batch;
-
-            self.mutex.lock();
-            defer self.mutex.unlock();
-
-            if (arena_batch != self.arena_batch) {
-                return self.getArena();
             }
 
             return self.createArena();

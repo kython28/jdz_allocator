@@ -669,3 +669,25 @@ test "consecutive overalignment" {
         allocator.free(buffer);
     }
 }
+
+test "small allocations parallel" {
+    var jdz_allocator = JdzAllocator(.{ .thread_safe = true }).init();
+    defer jdz_allocator.deinit();
+
+    const allocator = jdz_allocator.allocator();
+
+    const spawn = struct {
+        fn thread_spawn(alloc: std.mem.Allocator) !void {
+            const a = try alloc.create(u64);
+            alloc.destroy(a);
+        }
+    }.thread_spawn;
+
+    var threads: [5]std.Thread = undefined;
+    for (0..5) |i| {
+        threads[i] = try std.Thread.spawn(.{}, spawn, .{allocator});
+    }
+    for (threads) |t| {
+        t.join();
+    }
+}
