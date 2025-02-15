@@ -215,7 +215,7 @@ fn threadAllocWorker(min: usize, max: usize, allocator: std.mem.Allocator, max_r
     var slots = std.BoundedArray([]u8, BUFFER_CAPACITY){};
     var rounds: usize = max_rounds;
 
-    var random_source = std.rand.DefaultPrng.init(1337);
+    var random_source = std.Random.DefaultPrng.init(1337);
     const rng = random_source.random();
 
     while (rounds > 0) {
