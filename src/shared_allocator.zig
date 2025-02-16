@@ -694,3 +694,73 @@ test "small allocations parallel" {
         t.join();
     }
 }
+
+test "consecutive small allocations parallel" {
+    var jdz_allocator = JdzAllocator(.{
+        .thread_safe = true,
+        .shared_arena_batch_size = 2
+    }).init();
+    defer jdz_allocator.deinit();
+
+    const allocator = jdz_allocator.allocator();
+
+    const spawn = struct {
+        fn thread_spawn(alloc: std.mem.Allocator) !void {
+            var pointers: [50]*u64 = undefined;
+            for (&pointers) |*ptr| {
+                ptr.* = try alloc.create(u64);
+            }
+            for (&pointers) |ptr| {
+                alloc.destroy(ptr);
+            }
+        }
+    }.thread_spawn;
+
+    var threads: [8]std.Thread = undefined;
+    for (0..8) |i| {
+        threads[i] = try std.Thread.spawn(.{}, spawn, .{allocator});
+    }
+    for (threads) |t| {
+        t.join();
+    }
+}
+
+test "consecutive small allocations parallel with multi-allocators" {
+    var jdz_allocator = JdzAllocator(.{
+        .thread_safe = true,
+        .shared_arena_batch_size = 2
+    }).init();
+    defer jdz_allocator.deinit();
+
+    var jdz_allocator2 = JdzAllocator(.{
+        .thread_safe = true,
+        .shared_arena_batch_size = 2
+    }).init();
+    defer jdz_allocator2.deinit();
+
+    const allocator = jdz_allocator.allocator();
+    const allocator2 = jdz_allocator2.allocator();
+
+    const spawn = struct {
+        fn thread_spawn(alloc: std.mem.Allocator, alloc2: std.mem.Allocator) !void {
+            var pointers: [50]*u64 = undefined;
+            var pointers2: [50]*u64 = undefined;
+            for (&pointers, &pointers2) |*ptr, *ptr2| {
+                ptr.* = try alloc.create(u64);
+                ptr2.* = try alloc2.create(u64);
+            }
+            for (&pointers, &pointers2) |ptr, ptr2| {
+                alloc.destroy(ptr);
+                alloc2.destroy(ptr2);
+            }
+        }
+    }.thread_spawn;
+
+    var threads: [8]std.Thread = undefined;
+    for (0..8) |i| {
+        threads[i] = try std.Thread.spawn(.{}, spawn, .{allocator, allocator2});
+    }
+    for (threads) |t| {
+        t.join();
+    }
+}
