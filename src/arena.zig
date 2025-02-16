@@ -616,19 +616,24 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
         }
 
         inline fn freeSmallOrMediumShared(self: *Self, span: *Span, buf: []u8) void {
-            const tid = @call(.always_inline, getThreadId, .{});
+            // I didn't read completly this file so ... Later i will take a proper look
+            // and see if i can optimize something. I just wanted to keep this code
+            //
+            // const tid = @call(.always_inline, getThreadId, .{});
 
-            if (self.thread_id == tid and @call(.always_inline, Self.tryAcquire, .{self})) {
-                defer @call(.always_inline, Self.release, .{self});
+            // if (self.thread_id == tid and @call(.always_inline, Self.tryAcquire, .{self})) {
+            //     defer @call(.always_inline, Self.release, .{self});
 
-                @call(.always_inline, Span.pushFreeList, .{ span, buf });
+            //     @call(.always_inline, Span.pushFreeList, .{ span, buf });
 
-                @call(.always_inline, handleSpanNoLongerFull, .{ self, span });
-            } else {
-                @call(.always_inline, Span.pushDeferredFreeList, .{ span, buf });
+            //     @call(.always_inline, handleSpanNoLongerFull, .{ self, span });
+            // } else {
+            //     @call(.always_inline, Span.pushDeferredFreeList, .{ span, buf });
 
-                @call(.always_inline, handleSpanNoLongerFullDeferred, .{ self, span });
-            }
+            //     @call(.always_inline, handleSpanNoLongerFullDeferred, .{ self, span });
+            // }
+            @call(.always_inline, Span.pushFreeList, .{ span, buf });
+            @call(.always_inline, handleSpanNoLongerFull, .{ self, span });
         }
 
         inline fn handleSpanNoLongerFull(self: *Self, span: *Span) void {

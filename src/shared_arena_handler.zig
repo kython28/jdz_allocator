@@ -41,7 +41,7 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
 
 
         pub fn init() Self {
-            const slot: usize = @atomicRmw(usize, &slots_counter, .Add, 1, .monotonic) % MAX_SLOTS;
+            const slot: usize = @atomicRmw(usize, &slots_counter, .Add, 1, .acquire) % MAX_SLOTS;
             if (@cmpxchgStrong(SlotState, &slots_state[slot], SlotState.Available, SlotState.Occupied, .acquire, .monotonic)) |_| {
                 @panic("No free slots available");
             }
@@ -86,6 +86,9 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
             }
 
             @atomicStore(SlotState, &slots_state[self.handler_slot], SlotState.Available, .release);
+
+            @memset(&first_arenas_set.arenas, undefined);
+            first_arenas_set.next = null;
             return spans_leaked;
         }
 
@@ -113,7 +116,7 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
             const mutex = &self.mutex;
             mutex.lock();
 
-            const arenas_batch = self.arenas_batch;
+            var arenas_batch = self.arenas_batch;
             if ((arenas_batch * config.shared_arena_batch_size) > tid) {
                 mutex.unlock();
                 return self.claimOrCreateArena(tid);
@@ -121,41 +124,46 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
 
             defer mutex.unlock();
 
-            const new_arenas_set = config.backing_allocator.create(ArenasSet) catch {
-                return null;
-            };
+            var last_arenas_set = self.last_arenas_set orelse &self.first_arenas_set;
+            defer self.last_arenas_set = last_arenas_set;
 
-            self.arenas_batch = arenas_batch + 1;
+            const new_arenas_batch = (tid - (tid % config.shared_arena_batch_size)) / config.shared_arena_batch_size + 1;
+            defer self.arenas_batch = arenas_batch;
 
-            for (&new_arenas_set.arenas) |*new_arena| {
-                new_arena.* = Arena.init(.unlocked, null);
+            while (arenas_batch < new_arenas_batch) {
+                const new_arenas_set = config.backing_allocator.create(ArenasSet) catch {
+                    return null;
+                };
+
+                for (&new_arenas_set.arenas) |*new_arena| {
+                    new_arena.* = Arena.init(.unlocked, null);
+                }
+                new_arenas_set.next = null;
+
+                last_arenas_set.next = new_arenas_set;
+                last_arenas_set = new_arenas_set;
+                arenas_batch += 1;
             }
-            new_arenas_set.next = null;
 
-            if (self.last_arenas_set) |*l_arena| {
-                l_arena.*.next = new_arenas_set;
-                l_arena.* = new_arenas_set;
-            }else{
-                self.first_arenas_set.next = new_arenas_set;
-                self.last_arenas_set = new_arenas_set;
-            }
+            const new_arena = &last_arenas_set.arenas[tid % config.shared_arena_batch_size];
+            new_arena.thread_id = @intCast(tid);
 
-            const f_arena = &new_arenas_set.arenas[0];
-            f_arena.thread_id = @intCast(tid);
-
-            return f_arena;
+            return new_arena;
         }
 
         inline fn getThreadId(self: *Self, tid: *usize) bool {
             const slot = self.handler_slot;
+            const offset = thread_tid_offsets[slot];
             if (cached_thread_tids[slot]) |v| {
-                tid.* = v - thread_tid_offsets[slot];
-                return false;
+                if (v >= offset) {
+                    tid.* = v - offset;
+                    return false;
+                }
             }
 
-            const prev_v = @atomicRmw(usize, &thread_tid_counter[slot], .Add, 1, .monotonic);
+            const prev_v = @atomicRmw(usize, &thread_tid_counter[slot], .Add, 1, .acquire);
             cached_thread_tids[slot] = prev_v;
-            tid.* = prev_v - thread_tid_offsets[slot];
+            tid.* = prev_v - offset;
             return true;
         }
     };
