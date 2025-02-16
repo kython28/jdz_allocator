@@ -42,28 +42,28 @@ fn bench(num_threads: u32) !void {
     try jdz_mixed(num_threads);
     try jdz_global_mixed(num_threads);
     try c_mixed(num_threads);
-    // try gpa_mixed(num_threads);
+    try gpa_mixed(num_threads);
     try smp_mixed(num_threads);
 
     try std.io.getStdOut().writer().print("==Small Alloc==\n", .{});
     try jdz_small(num_threads);
     try jdz_global_small(num_threads);
     try c_small(num_threads);
-    // try gpa_small(num_threads);
+    try gpa_small(num_threads);
     try smp_small(num_threads);
 
     try std.io.getStdOut().writer().print("==Medium Alloc==\n", .{});
     try jdz_medium(num_threads);
     try jdz_global_medium(num_threads);
     try c_medium(num_threads);
-    // try gpa_medium(num_threads);
+    try gpa_medium(num_threads);
     try smp_medium(num_threads);
 
     try std.io.getStdOut().writer().print("==Big Alloc==\n", .{});
     try jdz_big(num_threads);
     try jdz_global_big(num_threads);
     try c_big(num_threads);
-    // try gpa_big(num_threads);
+    try gpa_big(num_threads);
     try smp_big(num_threads);
 
     try std.io.getStdOut().writer().print("\n", .{});
