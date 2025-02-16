@@ -7,8 +7,17 @@ const JdzAllocConfig = jdz_allocator.JdzAllocConfig;
 
 const assert = std.debug.assert;
 
-var thread_index: std.Thread.Id = 0;
-threadlocal var cached_thread_index: ?std.Thread.Id = null;
+const SlotState = enum {
+    Available, Occupied
+};
+
+var slots_counter: usize = 0;
+const MAX_SLOTS = 256;
+
+var slots_state: [MAX_SLOTS]SlotState = @splat(SlotState.Available);
+var thread_tid_counter: [MAX_SLOTS]usize = @splat(0);
+var thread_tid_offsets: [MAX_SLOTS]usize = @splat(0);
+threadlocal var cached_thread_tids: [MAX_SLOTS]?usize = @splat(null);
 
 pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
     const Arena = span_arena.Arena(config, false);
@@ -26,10 +35,17 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
 
         mutex: Mutex,
         arenas_batch: usize = 1,
+        handler_slot: usize,
 
         const Self = @This();
 
+
         pub fn init() Self {
+            const slot: usize = @atomicRmw(usize, &slots_counter, .Add, 1, .monotonic) % MAX_SLOTS;
+            if (@cmpxchgStrong(SlotState, &slots_state[slot], SlotState.Available, SlotState.Occupied, .acquire, .monotonic)) |_| {
+                @panic("No free slots available");
+            }
+
             var set: ArenasSet = .{
                 .arenas = undefined,
                 .next = null
@@ -39,10 +55,12 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
                 arena.* = Arena.init(.unlocked, null);
             }
 
+            thread_tid_offsets[slot] = thread_tid_counter[slot];
             return .{
                 .first_arenas_set = set,
                 .last_arenas_set = null,
                 .mutex = .{},
+                .handler_slot = slot,
             };
         }
 
@@ -67,12 +85,13 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
                 opt_arenas_set = next;
             }
 
+            @atomicStore(SlotState, &slots_state[self.handler_slot], SlotState.Available, .release);
             return spans_leaked;
         }
 
         pub fn getArena(self: *Self) ?*Arena {
-            var tid: std.Thread.Id = undefined;
-            const new_thread = getThreadId(&tid);
+            var tid: usize = undefined;
+            const new_thread = self.getThreadId(&tid);
 
             if (new_thread and tid >= config.shared_arena_batch_size) {
                 return self.createArena(tid);
@@ -81,16 +100,16 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
             return self.claimOrCreateArena(tid);
         }
 
-        inline fn claimOrCreateArena(self: *Self, tid: std.Thread.Id) ?*Arena {
+        inline fn claimOrCreateArena(self: *Self, tid: usize) ?*Arena {
             const index = tid % config.shared_arena_batch_size;
-            const n_jumps = (tid - index)/config.shared_arena_batch_size;
+            const n_jumps = (tid - index) / config.shared_arena_batch_size;
             var opt_arenas_set: *ArenasSet = &self.first_arenas_set;
             for (0..n_jumps) |_| opt_arenas_set = opt_arenas_set.next.?;
 
             return &opt_arenas_set.arenas[index];
         }
 
-        fn createArena(self: *Self, tid: std.Thread.Id) ?*Arena {
+        fn createArena(self: *Self, tid: usize) ?*Arena {
             const mutex = &self.mutex;
             mutex.lock();
 
@@ -122,20 +141,21 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
             }
 
             const f_arena = &new_arenas_set.arenas[0];
-            f_arena.thread_id = tid;
+            f_arena.thread_id = @intCast(tid);
 
             return f_arena;
         }
 
-        inline fn getThreadId(tid: *std.Thread.Id) bool {
-            if (cached_thread_index) |v| {
-                tid.* = v;
+        inline fn getThreadId(self: *Self, tid: *usize) bool {
+            const slot = self.handler_slot;
+            if (cached_thread_tids[slot]) |v| {
+                tid.* = v - thread_tid_offsets[slot];
                 return false;
             }
 
-            const prev_v = @atomicRmw(std.Thread.Id, &thread_index, .Add, 1, .monotonic);
-            cached_thread_index = prev_v;
-            tid.* = prev_v;
+            const prev_v = @atomicRmw(usize, &thread_tid_counter[slot], .Add, 1, .monotonic);
+            cached_thread_tids[slot] = prev_v;
+            tid.* = prev_v - thread_tid_offsets[slot];
             return true;
         }
     };
