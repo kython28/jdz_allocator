@@ -63,6 +63,7 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("src/jdz_allocator.zig"),
         .target = target,
         .optimize = optimize,
+        .sanitize_thread = true
     });
 
     const run_tests = b.addRunArtifact(tests);
