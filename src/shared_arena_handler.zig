@@ -5,7 +5,7 @@ const utils = @import("utils.zig");
 
 const JdzAllocConfig = jdz_allocator.JdzAllocConfig;
 
-const assert = std.debug.assert;
+const assert = utils.assert;
 
 const SlotState = enum {
     Available, Occupied

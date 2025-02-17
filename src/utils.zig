@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const jdz_allocator = @import("jdz_allocator.zig");
 const static_config = @import("static_config.zig");
@@ -12,8 +13,6 @@ const Span = span_file.Span;
 const Value = std.atomic.Value;
 const AtomicOrder = std.builtin.AtomicOrder;
 
-const assert = std.debug.assert;
-
 const usize_bits_subbed = @bitSizeOf(usize) - 1;
 
 const log2_usize_type = @Type(std.builtin.Type{ .Int = std.builtin.Type.Int{
@@ -25,6 +24,14 @@ const DummyMutex = struct {
     pub fn lock(_: @This()) void {}
     pub fn unlock(_: @This()) void {}
 };
+
+pub inline fn assert(ok: bool) void {
+    if ( builtin.mode != .Debug) {
+        if (!@inComptime()) return;
+    }
+
+    if (!ok) unreachable;
+}
 
 pub fn getMutexType(comptime config: JdzAllocConfig) type {
     return if (config.thread_safe)

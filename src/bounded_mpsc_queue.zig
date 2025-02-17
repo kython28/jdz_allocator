@@ -3,7 +3,7 @@ const jdz_allocator = @import("jdz_allocator.zig");
 const utils = @import("utils.zig");
 
 const testing = std.testing;
-const assert = std.debug.assert;
+const assert = utils.assert;
 const Value = std.atomic.Value;
 
 const cache_line = std.atomic.cache_line;

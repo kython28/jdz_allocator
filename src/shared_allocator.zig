@@ -14,7 +14,7 @@ const Value = std.atomic.Value;
 
 const log2 = std.math.log2;
 const testing = std.testing;
-const assert = std.debug.assert;
+const assert = utils.assert;
 
 pub fn JdzAllocator(comptime config: JdzAllocConfig) type {
     const Arena = span_arena.Arena(config, false);

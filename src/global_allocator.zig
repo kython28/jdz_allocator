@@ -15,7 +15,7 @@ const Value = std.atomic.Value;
 
 const log2 = std.math.log2;
 const testing = std.testing;
-const assert = std.debug.assert;
+const assert = utils.assert;
 
 pub fn JdzGlobalAllocator(comptime config: JdzAllocConfig) type {
     const Arena = span_arena.Arena(config, true);
@@ -710,3 +710,35 @@ test "consecutive overalignment" {
         allocator.free(buffer);
     }
 }
+
+// test "consecutive small allocations parallel" {
+//     const jdz_allocator = JdzGlobalAllocator(.{
+//         .thread_safe = true,
+//         .shared_arena_batch_size = 2
+//     });
+//     defer jdz_allocator.deinit();
+
+//     const allocator = jdz_allocator.allocator();
+
+//     const spawn = struct {
+//         fn thread_spawn(alloc_m: @TypeOf(jdz_allocator), alloc: std.mem.Allocator) !void {
+//             var pointers: [50]*u64 = undefined;
+//             for (&pointers) |*ptr| {
+//                 ptr.* = try alloc.create(u64);
+//             }
+//             for (&pointers) |ptr| {
+//                 alloc.destroy(ptr);
+//             }
+
+//             alloc_m.deinitThread();
+//         }
+//     };
+
+//     var threads: [8]std.Thread = undefined;
+//     for (0..8) |i| {
+//         threads[i] = try std.Thread.spawn(.{}, spawn, .{jdz_allocator, allocator});
+//     }
+//     for (threads) |t| {
+//         t.join();
+//     }
+// }

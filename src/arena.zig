@@ -16,7 +16,7 @@ const JdzAllocConfig = jdz_allocator.JdzAllocConfig;
 const SizeClass = static_config.SizeClass;
 const Value = std.atomic.Value;
 
-const assert = std.debug.assert;
+const assert = utils.assert;
 
 const cache_line = std.atomic.cache_line;
 
@@ -26,9 +26,7 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
     const ArenaSpanCache = span_cache.SpanCache(config.cache_limit);
 
     const Lock = utils.getArenaLockType(config);
-
     const ArenaLargeCache = mpsc_queue.BoundedMpscQueue(*Span, config.large_cache_limit);
-
     const ArenaMapCache = stack.BoundedStack(*Span, config.map_cache_limit);
 
     const GlobalArenaHandler = global_arena_handler.GlobalArenaHandler(config);
@@ -42,16 +40,15 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
         cache: ArenaSpanCache,
         large_cache: [large_class_count]ArenaLargeCache,
         map_cache: [large_class_count]ArenaMapCache,
-        writer_lock: Lock align(cache_line),
-        thread_id: ?std.Thread.Id align(cache_line),
+        writer_lock: Lock align(cache_line) = Lock.unlocked,
+        thread_id: std.Thread.Id align(cache_line) = undefined,
         next: ?*Self align(cache_line),
-        is_alloc_master: bool,
 
         const GlobalAllocator = if (is_threadlocal) global_allocator.JdzGlobalAllocator(config) else {};
 
         const Self = @This();
 
-        pub fn init(writer_lock: Lock, thread_id: ?std.Thread.Id) Self {
+        pub fn init() Self {
             @setEvalBranchQuota(4 * @as(u32, large_class_count) * @max(config.map_cache_limit, config.large_cache_limit));
             var large_cache: [large_class_count]ArenaLargeCache = undefined;
             var map_cache: [large_class_count]ArenaMapCache = undefined;
@@ -73,17 +70,13 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
                 .cache = ArenaSpanCache.init(),
                 .large_cache = large_cache,
                 .map_cache = map_cache,
-                .writer_lock = writer_lock,
-                .thread_id = thread_id,
                 .next = null,
-                .is_alloc_master = false,
             };
         }
 
         pub fn deinit(self: *Self) usize {
             self.writer_lock.acquire();
             defer self.writer_lock.release();
-
             self.freeEmptySpansFromLists();
 
             while (self.cache.tryRead()) |span| {
@@ -105,12 +98,12 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
             return self.span_count.load(.monotonic);
         }
 
-        pub fn makeMaster(self: *Self) void {
-            self.is_alloc_master = true;
-        }
-
         pub inline fn tryAcquire(self: *Self) bool {
-            return self.writer_lock.tryAcquire();
+            if (self.writer_lock.tryAcquire()) {
+                self.thread_id = getThreadId();
+                return true;
+            }
+            return false;
         }
 
         pub inline fn release(self: *Self) void {
@@ -606,34 +599,26 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
         inline fn freeSmallOrMediumThreadLocal(self: *Self, span: *Span, buf: []u8) void {
             if (self == @call(.always_inline, GlobalArenaHandler.getThreadArena, .{})) {
                 @call(.always_inline, Span.pushFreeList, .{ span, buf });
-
                 @call(.always_inline, handleSpanNoLongerFull, .{ self, span });
             } else {
                 @call(.always_inline, Span.pushDeferredFreeList, .{ span, buf });
-
                 @call(.always_inline, handleSpanNoLongerFullDeferred, .{ self, span });
             }
         }
 
         inline fn freeSmallOrMediumShared(self: *Self, span: *Span, buf: []u8) void {
-            // I didn't read completly this file so ... Later i will take a proper look
-            // and see if i can optimize something. I just wanted to keep this code
-            //
-            // const tid = @call(.always_inline, getThreadId, .{});
+            const lock = &self.writer_lock;
+            if (lock.tryAcquire()) {
+                defer lock.release();
 
-            // if (self.thread_id == tid and @call(.always_inline, Self.tryAcquire, .{self})) {
-            //     defer @call(.always_inline, Self.release, .{self});
+                @call(.always_inline, Span.pushFreeList, .{ span, buf });
+                @call(.always_inline, handleSpanNoLongerFull, .{ self, span });
 
-            //     @call(.always_inline, Span.pushFreeList, .{ span, buf });
+                return;
+            }
 
-            //     @call(.always_inline, handleSpanNoLongerFull, .{ self, span });
-            // } else {
-            //     @call(.always_inline, Span.pushDeferredFreeList, .{ span, buf });
-
-            //     @call(.always_inline, handleSpanNoLongerFullDeferred, .{ self, span });
-            // }
-            @call(.always_inline, Span.pushFreeList, .{ span, buf });
-            @call(.always_inline, handleSpanNoLongerFull, .{ self, span });
+            @call(.always_inline, Span.pushDeferredFreeList, .{ span, buf });
+            @call(.always_inline, handleSpanNoLongerFullDeferred, .{ self, span });
         }
 
         inline fn handleSpanNoLongerFull(self: *Self, span: *Span) void {
@@ -656,7 +641,6 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
                 return cached_thread_id.?;
             };
         }
-
         fn freeSpanOnArenaDeinit(self: *Self, span: *Span) void {
             if (is_threadlocal and span.span_count == 1) {
                 self.cacheSpanToGlobalOrFree(span);

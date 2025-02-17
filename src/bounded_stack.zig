@@ -2,7 +2,7 @@ const std = @import("std");
 const utils = @import("utils.zig");
 
 const testing = std.testing;
-const assert = std.debug.assert;
+const assert = utils.assert;
 
 pub fn BoundedStack(comptime T: type, comptime buffer_size: usize) type {
     return extern struct {

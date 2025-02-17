@@ -8,7 +8,7 @@ const span_file = @import("span.zig");
 
 const Span = span_file.Span;
 const testing = std.testing;
-const assert = std.debug.assert;
+const assert = utils.assert;
 const JdzAllocConfig = jdz_allocator.JdzAllocConfig;
 
 const span_size = static_config.span_size;

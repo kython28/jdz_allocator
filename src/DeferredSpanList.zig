@@ -6,7 +6,7 @@ const span_file = @import("span.zig");
 const Span = span_file.Span;
 const JdzAllocConfig = jdz_allocator.JdzAllocConfig;
 const testing = std.testing;
-const assert = std.debug.assert;
+const assert = utils.assert;
 
 head: ?*Span = null,
 
