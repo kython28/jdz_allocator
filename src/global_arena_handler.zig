@@ -11,7 +11,7 @@ pub fn GlobalArenaHandler(comptime config: JdzAllocConfig) type {
     return struct {
         const Arena = span_arena.Arena(config, true);
 
-        var preinit_arena: Arena = Arena.init(.unlocked, 0);
+        var preinit_arena: Arena = Arena.init();
         var arena_list: ?*Arena = &preinit_arena;
         var mutex: Mutex = .{};
 
@@ -61,7 +61,6 @@ pub fn GlobalArenaHandler(comptime config: JdzAllocConfig) type {
             if (arena_list) |arena| {
                 arena_list = arena.next;
                 arena.next = null;
-                arena.thread_id = std.Thread.getCurrentId();
 
                 thread_arena = arena;
 
@@ -74,7 +73,7 @@ pub fn GlobalArenaHandler(comptime config: JdzAllocConfig) type {
         fn createArena() ?*Arena {
             const new_arena = config.backing_allocator.create(Arena) catch return null;
 
-            new_arena.* = Arena.init(.unlocked, std.Thread.getCurrentId());
+            new_arena.* = Arena.init();
 
             thread_arena = new_arena;
 
@@ -91,13 +90,8 @@ pub fn GlobalArenaHandler(comptime config: JdzAllocConfig) type {
                 return;
             }
 
-            var arena = arena_list.?;
-
-            while (arena.next) |next| {
-                arena = next;
-            }
-
-            arena.next = new_arena;
+            new_arena.next = arena_list;
+            arena_list = new_arena;
         }
     };
 }
