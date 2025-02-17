@@ -152,7 +152,6 @@ pub fn JdzAllocator(comptime config: JdzAllocConfig) type {
             _ = log2_align;
 
             const span = @call(.always_inline, utils.getSpan, .{buf.ptr});
-
             const arena: *Arena = @ptrCast(@alignCast(span.arena));
 
             if (span.class.block_size <= medium_max) {
@@ -166,7 +165,7 @@ pub fn JdzAllocator(comptime config: JdzAllocConfig) type {
 
         fn allocate(self: *Self, size: usize) ?[*]u8 {
             const arena = @call(.always_inline, SharedArenaHandler.getArena, .{&self.arena_handler}) orelse return null;
-            // defer @call(.always_inline, Arena.release, .{arena});
+            defer @call(.always_inline, Arena.release, .{arena});
 
             if (size <= small_max) {
                 const size_class = @call(.always_inline, utils.getSmallSizeClass, .{size});
@@ -295,6 +294,35 @@ test "large allocations" {
     allocator.free(ptr1);
     const ptr3 = try allocator.alloc(u64, 62768);
     allocator.free(ptr3);
+    allocator.free(ptr2);
+}
+
+test "allocations - alloc alloc free alloc free free" {
+    var jdz_allocator = JdzAllocator(.{}).init();
+    defer jdz_allocator.deinit();
+
+    const allocator = jdz_allocator.allocator();
+    const ptr1 = try allocator.alloc(u64, 10);
+    @memset(ptr1, 0xbb);
+
+    const ptr2 = try allocator.alloc(u64, 100);
+    @memset(ptr2, 0xcc);
+
+    for (ptr1) |v| try std.testing.expectEqual(0xbb, v);
+
+    allocator.free(ptr1);
+
+    for (ptr2) |v| try std.testing.expectEqual(0xcc, v);
+
+    const ptr3 = try allocator.alloc(u64, 500);
+    @memset(ptr3, 0xdd);
+
+    for (ptr2) |v| try std.testing.expectEqual(0xcc, v);
+
+    allocator.free(ptr3);
+
+    for (ptr2) |v| try std.testing.expectEqual(0xcc, v);
+
     allocator.free(ptr2);
 }
 
