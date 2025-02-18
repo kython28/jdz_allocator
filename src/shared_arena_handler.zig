@@ -19,6 +19,11 @@ const ArenaDispatcher = packed struct {
 const dispatcher_max_index = std.math.maxInt(u32)/2;
 
 pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
+    // Verify batch size is power of two for optimization
+    comptime {
+        assert(utils.isPowerOfTwo(config.shared_arena_batch_size));
+    }
+    const batch_size_mask = config.shared_arena_batch_size - 1;
     const Arena = span_arena.Arena(config, false);
 
     const Mutex = utils.getMutexType(config);
@@ -119,7 +124,7 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
 
         inline fn claimOrCreateArena(self: *Self, dispatcher: ArenaDispatcher) ?*Arena {
             const index = dispatcher.index % dispatcher.capacity;
-            const mod = index % config.shared_arena_batch_size;
+            const mod = index & batch_size_mask;
             const n_jumps = (index - mod) / config.shared_arena_batch_size;
 
             var opt_arenas_set: *ArenasSet = &self.first_arenas_set;
