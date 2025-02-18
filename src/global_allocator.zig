@@ -711,34 +711,34 @@ test "consecutive overalignment" {
     }
 }
 
-// test "consecutive small allocations parallel" {
-//     const jdz_allocator = JdzGlobalAllocator(.{
-//         .thread_safe = true,
-//         .shared_arena_batch_size = 2
-//     });
-//     defer jdz_allocator.deinit();
+test "consecutive small allocations parallel" {
+    const jdz_allocator = JdzGlobalAllocator(.{
+        .thread_safe = true,
+        .shared_arena_batch_size = 2
+    });
+    defer jdz_allocator.deinit();
 
-//     const allocator = jdz_allocator.allocator();
+    const allocator = jdz_allocator.allocator();
 
-//     const spawn = struct {
-//         fn thread_spawn(alloc_m: @TypeOf(jdz_allocator), alloc: std.mem.Allocator) !void {
-//             var pointers: [50]*u64 = undefined;
-//             for (&pointers) |*ptr| {
-//                 ptr.* = try alloc.create(u64);
-//             }
-//             for (&pointers) |ptr| {
-//                 alloc.destroy(ptr);
-//             }
+    const spawn = struct {
+        fn thread_spawn(alloc_m: @TypeOf(jdz_allocator), alloc: std.mem.Allocator) !void {
+            var pointers: [50]*u64 = undefined;
+            for (&pointers) |*ptr| {
+                ptr.* = try alloc.create(u64);
+            }
+            for (&pointers) |ptr| {
+                alloc.destroy(ptr);
+            }
 
-//             alloc_m.deinitThread();
-//         }
-//     }.thread_spawn;
+            alloc_m.deinitThread();
+        }
+    }.thread_spawn;
 
-//     var threads: [8]std.Thread = undefined;
-//     for (0..8) |i| {
-//         threads[i] = try std.Thread.spawn(.{}, spawn, .{jdz_allocator, allocator});
-//     }
-//     for (threads) |t| {
-//         t.join();
-//     }
-// }
+    var threads: [8]std.Thread = undefined;
+    for (0..8) |i| {
+        threads[i] = try std.Thread.spawn(.{}, spawn, .{jdz_allocator, allocator});
+    }
+    for (threads) |t| {
+        t.join();
+    }
+}

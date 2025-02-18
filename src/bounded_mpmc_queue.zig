@@ -57,7 +57,7 @@ pub fn BoundedMpmcQueue(comptime T: type, comptime buffer_size: usize) type {
                 } else if (diff < 0) {
                     return false;
                 } else {
-                    pos = self.enqueue_pos.load(.monotonic);
+                    pos = self.enqueue_pos.load(.acquire);
                 }
             }
 
@@ -83,7 +83,7 @@ pub fn BoundedMpmcQueue(comptime T: type, comptime buffer_size: usize) type {
                 } else if (diff < 0) {
                     return null;
                 } else {
-                    pos = self.dequeue_pos.load(.monotonic);
+                    pos = self.dequeue_pos.load(.acquire);
                 }
             }
 

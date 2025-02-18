@@ -20,9 +20,7 @@ const dispatcher_max_index = std.math.maxInt(u32)/2;
 
 pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
     // Verify batch size is power of two for optimization
-    comptime {
-        assert(utils.isPowerOfTwo(config.shared_arena_batch_size));
-    }
+    assert(utils.isPowerOfTwo(config.shared_arena_batch_size));
     const batch_size_mask = config.shared_arena_batch_size - 1;
     const Arena = span_arena.Arena(config, false);
 

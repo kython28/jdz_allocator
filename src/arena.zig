@@ -157,7 +157,7 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
         }
 
         fn allocateFromCacheOrNew(self: *Self, size_class: SizeClass) ?[*]u8 {
-            const span = self.getSpanFromCacheOrNew() orelse return null;
+            const span: *Span = self.getSpanFromCacheOrNew() orelse return null;
 
             span.initialiseFreshSpan(self, size_class);
 
