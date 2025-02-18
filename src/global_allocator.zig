@@ -732,7 +732,7 @@ test "consecutive overalignment" {
 
 //             alloc_m.deinitThread();
 //         }
-//     };
+//     }.thread_spawn;
 
 //     var threads: [8]std.Thread = undefined;
 //     for (0..8) |i| {

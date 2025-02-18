@@ -21,21 +21,25 @@ const free_list_null = static_config.free_list_null;
 const invalid_pointer: usize = std.mem.alignBackward(usize, std.math.maxInt(usize), static_config.small_granularity);
 
 pub const Span = extern struct {
+    deferred_free_list: usize align(std.atomic.cache_line),
+
     free_list: usize,
-    full: bool,
-    aligned_blocks: bool,
-    block_count: u16,
-    class: SizeClass,
     span_count: usize,
-    arena: *anyopaque,
-    next: ?*Span,
-    prev: ?*Span,
     alloc_ptr: usize,
     initial_ptr: usize,
     alloc_size: usize,
 
-    deferred_free_list: usize align(std.atomic.cache_line),
+    class: SizeClass,
+
+    arena: *anyopaque,
+    next: ?*Span,
+    prev: ?*Span,
+
     deferred_frees: u16,
+    block_count: u16,
+
+    full: bool,
+    aligned_blocks: bool,
 
     pub inline fn pushFreeList(self: *Span, buf: []u8) void {
         const ptr = @call(.always_inline, Span.getBlockPtr, .{ self, buf });
