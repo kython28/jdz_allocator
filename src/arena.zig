@@ -9,9 +9,8 @@ const static_config = @import("static_config.zig");
 const utils = @import("utils.zig");
 const span_file = @import("span.zig");
 
-const SpanList = @import("SpanList.zig");
-const Span = span_file.Span;
-const DeferredSpanList = @import("DeferredSpanList.zig");
+const span_list_file = @import("span_list.zig");
+const deferred_span_list_file = @import("deferred_span_list.zig");
 const JdzAllocConfig = jdz_allocator.JdzAllocConfig;
 const SizeClass = static_config.SizeClass;
 const Value = std.atomic.Value;
@@ -23,11 +22,14 @@ const cache_line = std.atomic.cache_line;
 threadlocal var cached_thread_id: ?std.Thread.Id = null;
 
 pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) type {
-    const ArenaSpanCache = span_cache.SpanCache(config.cache_limit);
+    const ArenaSpanCache = span_cache.SpanCache(config.cache_limit, config.thread_safe);
 
     const Lock = utils.getArenaLockType(config);
-    const ArenaLargeCache = mpsc_queue.BoundedMpscQueue(*Span, config.large_cache_limit);
+    const Span = span_file.Span(config.thread_safe);
+    const ArenaLargeCache = mpsc_queue.BoundedMpscQueue(*Span, config.large_cache_limit, config.thread_safe);
     const ArenaMapCache = stack.BoundedStack(*Span, config.map_cache_limit);
+    const DeferredSpanList = deferred_span_list_file.DeferredSpanList(config.thread_safe);
+    const SpanList = span_list_file.SpanList(config.thread_safe);
 
     const GlobalArenaHandler = global_arena_handler.GlobalArenaHandler(config);
 
@@ -95,6 +97,10 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
                 }
             }
 
+            if (!config.thread_safe) {
+                return self.span_count.raw;
+            }
+
             return self.span_count.load(.monotonic);
         }
 
@@ -133,7 +139,11 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
         fn allocateFromSpanList(self: *Self, size_class: SizeClass) ?[*]u8 {
             while (self.spans[size_class.class_idx].tryRead()) |span| {
                 if (span.isFull()) {
-                    @atomicStore(bool, &span.full, true, .monotonic);
+                    if (config.thread_safe) {
+                        @atomicStore(bool, &span.full, true, .release);
+                    }else{
+                        span.full = true;
+                    }
 
                     _ = self.spans[size_class.class_idx].removeHead();
                     self.free_lists[size_class.class_idx] = self.spans[size_class.class_idx].getHeadFreeList();
@@ -457,7 +467,13 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
 
             if ((span_alloc_ptr & mod_span_size) != 0) map_count -= 1;
 
-            if (config.report_leaks) _ = self.span_count.fetchAdd(map_count, .monotonic);
+            if (config.report_leaks) {
+                if (config.thread_safe) {
+                    _ = self.span_count.fetchAdd(map_count, .monotonic);
+                }else{
+                    self.span_count.raw += map_count;
+                }
+            }
 
             const span = self.getSpansCacheRemaining(span_alloc_ptr, alloc_size, map_count, span_count);
 
@@ -622,16 +638,35 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
         }
 
         inline fn handleSpanNoLongerFull(self: *Self, span: *Span) void {
-            if (span.full and @atomicRmw(bool, &span.full, .Xchg, false, .monotonic)) {
-                self.spans[span.class.class_idx].write(span);
-                self.free_lists[span.class.class_idx] = self.spans[span.class.class_idx].getHeadFreeList();
+            if (config.thread_safe) {
+                if (!(span.full and @atomicRmw(bool, &span.full, .Xchg, false, .monotonic))) {
+                    return;
+                }
+            }else{
+                const is_not_full = !span.full;
+                if (is_not_full) {
+                    return;
+                }
+                span.full = false;
             }
+
+            self.spans[span.class.class_idx].write(span);
+            self.free_lists[span.class.class_idx] = self.spans[span.class.class_idx].getHeadFreeList();
         }
 
         inline fn handleSpanNoLongerFullDeferred(self: *Self, span: *Span) void {
-            if (span.full and @atomicRmw(bool, &span.full, .Xchg, false, .monotonic)) {
-                self.deferred_partial_spans[span.class.class_idx].write(span);
+            if (config.thread_safe) {
+                if (!(span.full and @atomicRmw(bool, &span.full, .Xchg, false, .monotonic))) {
+                    return;
+                }
+            }else{
+                const is_not_full = !span.full;
+                if (is_not_full) {
+                    return;
+                }
             }
+
+            self.deferred_partial_spans[span.class.class_idx].write(span);
         }
 
         inline fn getThreadId() std.Thread.Id {
@@ -655,7 +690,11 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
             assert(is_threadlocal);
 
             if (GlobalAllocator.cacheSpan(span)) {
-                if (config.report_leaks) _ = self.span_count.fetchSub(span.span_count, .monotonic);
+                if (config.thread_safe) {
+                    _ = self.span_count.fetchSub(span.span_count, .monotonic);
+                }else{
+                    self.span_count.raw -= span.span_count;
+                }
             } else {
                 self.freeSpan(span);
             }
@@ -665,7 +704,13 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
             assert(is_threadlocal);
 
             if (GlobalAllocator.cacheLargeSpan(span)) {
-                if (config.report_leaks) _ = self.span_count.fetchSub(span.span_count, .monotonic);
+                if (config.report_leaks) {
+                    if (config.thread_safe) {
+                        _ = self.span_count.fetchSub(span.span_count, .monotonic);
+                    }else{
+                        self.span_count.raw -= span.span_count;
+                    }
+                }
             } else {
                 self.freeSpan(span);
             }
@@ -674,7 +719,13 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
         fn freeSpan(self: *Self, span: *Span) void {
             assert(span.alloc_size >= span_size);
 
-            if (config.report_leaks) _ = self.span_count.fetchSub(span.span_count, .monotonic);
+            if (config.report_leaks) {
+                if (config.thread_safe) {
+                    _ = self.span_count.fetchSub(span.span_count, .monotonic);
+                }else{
+                    self.span_count.raw -= span.span_count;
+                }
+            }
 
             const initial_alloc = @as([*]u8, @ptrFromInt(span.initial_ptr))[0..span.alloc_size];
             self.backing_allocator.rawFree(initial_alloc, @enumFromInt(page_alignment), @returnAddress());
@@ -731,7 +782,7 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
 
         fn freeSpanFromList(self: *Self, span: *Span) void {
             if (is_threadlocal) {
-                utils.resetLinkedSpan(span);
+                utils.resetLinkedSpan(config.thread_safe, span);
 
                 self.cacheSpanToGlobalOrFree(span);
             } else {

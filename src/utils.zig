@@ -70,7 +70,7 @@ pub inline fn getMediumSizeIdx(len: usize) usize {
     return (len - small_max - 1) >> medium_granularity_shift;
 }
 
-pub inline fn getSpan(ptr: *anyopaque) *Span {
+pub inline fn getSpan(ptr: *anyopaque, comptime thread_safe: bool) *Span(thread_safe) {
     return @ptrFromInt(@intFromPtr(ptr) & span_upper_mask);
 }
 
@@ -107,7 +107,7 @@ pub inline fn tryCASAddOne(atomic_ptr: *Value(usize), val: usize, success_orderi
     return atomic_ptr.cmpxchgWeak(val, val + 1, success_ordering, .monotonic);
 }
 
-pub inline fn resetLinkedSpan(span: *Span) void {
+pub inline fn resetLinkedSpan(comptime thread_safe: bool, span: *Span(thread_safe)) void {
     span.next = null;
     span.prev = null;
 }

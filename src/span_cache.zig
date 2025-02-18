@@ -6,16 +6,16 @@ const static_config = @import("static_config.zig");
 const utils = @import("utils.zig");
 const span_file = @import("span.zig");
 
-const Span = span_file.Span;
 const testing = std.testing;
 const assert = utils.assert;
 const JdzAllocConfig = jdz_allocator.JdzAllocConfig;
 
 const span_size = static_config.span_size;
 
-pub fn SpanCache(comptime cache_limit: u32) type {
+pub fn SpanCache(comptime cache_limit: u32, comptime thread_safe: bool) type {
     assert(utils.isPowerOfTwo(cache_limit));
 
+    const Span = span_file.Span(thread_safe);
     const Cache = bounded_stack.BoundedStack(*Span, cache_limit);
 
     return struct {

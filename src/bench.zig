@@ -73,6 +73,18 @@ fn bench(num_threads: u32) !void {
 /// Mixed
 ///
 fn jdz_mixed(num_threads: u32) !void {
+    if (num_threads == 1) {
+        var jdz_allocator = jdz.JdzAllocator(.{
+            .thread_safe = false
+        }).init();
+        defer jdz_allocator.deinit();
+
+        const allocator = jdz_allocator.allocator();
+
+        try runPerfTestAlloc("jdz/mixed", mixed_min, mixed_max, allocator, mixed_rounds, num_threads);
+        return;
+    }
+
     var jdz_allocator = jdz.JdzAllocator(.{}).init();
     defer jdz_allocator.deinit();
 
@@ -82,6 +94,18 @@ fn jdz_mixed(num_threads: u32) !void {
 }
 
 fn jdz_global_mixed(num_threads: u32) !void {
+    if (num_threads == 1) {
+        const jdz_allocator = jdz.JdzGlobalAllocator(.{
+            .thread_safe = false
+        });
+        defer jdz_allocator.deinit();
+
+        const allocator = jdz_allocator.allocator();
+
+        try runPerfTestAlloc("jdz/mixed", mixed_min, mixed_max, allocator, mixed_rounds, num_threads);
+        return;
+    }
+
     const jdz_allocator = jdz.JdzGlobalAllocator(.{});
     defer jdz.JdzGlobalAllocator(.{}).deinit();
 
@@ -115,6 +139,18 @@ fn c_mixed(num_threads: u32) !void {
 /// Small
 ///
 fn jdz_small(num_threads: u32) !void {
+    if (num_threads == 1) {
+        var jdz_allocator = jdz.JdzAllocator(.{
+            .thread_safe = false
+        }).init();
+        defer jdz_allocator.deinit();
+
+        const allocator = jdz_allocator.allocator();
+
+        try runPerfTestAlloc("jdz/mixed", mixed_min, mixed_max, allocator, mixed_rounds, num_threads);
+        return;
+    }
+
     var jdz_allocator = jdz.JdzAllocator(.{}).init();
     defer jdz_allocator.deinit();
 
@@ -130,6 +166,18 @@ fn c_small(num_threads: u32) !void {
 }
 
 fn jdz_global_small(num_threads: u32) !void {
+    if (num_threads == 1) {
+        const jdz_allocator = jdz.JdzGlobalAllocator(.{
+            .thread_safe = false
+        });
+        defer jdz_allocator.deinit();
+
+        const allocator = jdz_allocator.allocator();
+
+        try runPerfTestAlloc("jdz/mixed", mixed_min, mixed_max, allocator, mixed_rounds, num_threads);
+        return;
+    }
+
     const jdz_allocator = jdz.JdzGlobalAllocator(.{});
     defer jdz.JdzGlobalAllocator(.{}).deinit();
 
@@ -157,6 +205,18 @@ fn smp_small(num_threads: u32) !void {
 /// Medium
 ///
 fn jdz_medium(num_threads: u32) !void {
+    if (num_threads == 1) {
+        var jdz_allocator = jdz.JdzAllocator(.{
+            .thread_safe = false
+        }).init();
+        defer jdz_allocator.deinit();
+
+        const allocator = jdz_allocator.allocator();
+
+        try runPerfTestAlloc("jdz/mixed", mixed_min, mixed_max, allocator, mixed_rounds, num_threads);
+        return;
+    }
+
     var jdz_allocator = jdz.JdzAllocator(.{}).init();
     defer jdz_allocator.deinit();
     const allocator = jdz_allocator.allocator();
@@ -165,6 +225,18 @@ fn jdz_medium(num_threads: u32) !void {
 }
 
 fn jdz_global_medium(num_threads: u32) !void {
+    if (num_threads == 1) {
+        const jdz_allocator = jdz.JdzGlobalAllocator(.{
+            .thread_safe = false
+        });
+        defer jdz_allocator.deinit();
+
+        const allocator = jdz_allocator.allocator();
+
+        try runPerfTestAlloc("jdz/mixed", mixed_min, mixed_max, allocator, mixed_rounds, num_threads);
+        return;
+    }
+
     const jdz_allocator = jdz.JdzGlobalAllocator(.{});
     defer jdz.JdzGlobalAllocator(.{}).deinit();
 
@@ -198,6 +270,18 @@ fn smp_medium(num_threads: u32) !void {
 /// Big
 ///
 fn jdz_big(num_threads: u32) !void {
+    if (num_threads == 1) {
+        var jdz_allocator = jdz.JdzAllocator(.{
+            .thread_safe = false
+        }).init();
+        defer jdz_allocator.deinit();
+
+        const allocator = jdz_allocator.allocator();
+
+        try runPerfTestAlloc("jdz/mixed", mixed_min, mixed_max, allocator, mixed_rounds, num_threads);
+        return;
+    }
+
     var jdz_allocator = jdz.JdzAllocator(.{}).init();
     defer jdz_allocator.deinit();
 
@@ -207,6 +291,18 @@ fn jdz_big(num_threads: u32) !void {
 }
 
 fn jdz_global_big(num_threads: u32) !void {
+    if (num_threads == 1) {
+        const jdz_allocator = jdz.JdzGlobalAllocator(.{
+            .thread_safe = false
+        });
+        defer jdz_allocator.deinit();
+
+        const allocator = jdz_allocator.allocator();
+
+        try runPerfTestAlloc("jdz/mixed", mixed_min, mixed_max, allocator, mixed_rounds, num_threads);
+        return;
+    }
+
     const jdz_allocator = jdz.JdzGlobalAllocator(.{});
     defer jdz.JdzGlobalAllocator(.{}).deinit();
 

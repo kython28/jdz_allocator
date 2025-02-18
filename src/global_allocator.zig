@@ -9,7 +9,6 @@ const bounded_mpmc_queue = @import("bounded_mpmc_queue.zig");
 const utils = @import("utils.zig");
 const span_file = @import("span.zig");
 
-const Span = span_file.Span;
 const JdzAllocConfig = jdz.JdzAllocConfig;
 const Value = std.atomic.Value;
 
@@ -22,6 +21,7 @@ pub fn JdzGlobalAllocator(comptime config: JdzAllocConfig) type {
 
     const ArenaHandler = global_handler.GlobalArenaHandler(config);
 
+    const Span = span_file.Span(config.thread_safe);
     const GlobalSpanCache = bounded_mpmc_queue.BoundedMpmcQueue(*Span, config.cache_limit * config.global_cache_multiplier);
 
     const GlobalLargeCache = bounded_mpmc_queue.BoundedMpmcQueue(*Span, config.large_cache_limit * config.global_cache_multiplier);
@@ -107,7 +107,7 @@ pub fn JdzGlobalAllocator(comptime config: JdzAllocConfig) type {
 
                 if (@intFromPtr(ptr) & align_mask != 0) {
                     ptr = @ptrFromInt((@intFromPtr(ptr) & ~align_mask) + alignment);
-                    const span = @call(.always_inline, utils.getSpan, .{ptr});
+                    const span = @call(.always_inline, utils.getSpan, .{ptr, config.thread_safe});
 
                     span.aligned_blocks = true;
                 }
@@ -125,7 +125,7 @@ pub fn JdzGlobalAllocator(comptime config: JdzAllocConfig) type {
             const alignment = @as(usize, 1) << @intCast(@intFromEnum(log2_align));
             const aligned = (@intFromPtr(buf.ptr) & (alignment - 1)) == 0;
 
-            const span = @call(.always_inline, utils.getSpan, .{buf.ptr});
+            const span = @call(.always_inline, utils.getSpan, .{buf.ptr, config.thread_safe});
 
             if (buf.len <= span_max) return new_len <= span.class.block_size and aligned;
             if (buf.len <= large_max) return new_len <= span.alloc_size - (span.alloc_ptr - span.initial_ptr) and aligned;
@@ -148,7 +148,7 @@ pub fn JdzGlobalAllocator(comptime config: JdzAllocConfig) type {
             _ = ret_addr;
             _ = log2_align;
 
-            const span = @call(.always_inline, utils.getSpan, .{buf.ptr});
+            const span = @call(.always_inline, utils.getSpan, .{buf.ptr, config.thread_safe});
 
             const arena: *Arena = @ptrCast(@alignCast(span.arena));
 
@@ -649,7 +649,7 @@ test "empty span gets cached to global and reused" {
 
     const alloc_one = try allocator.alloc(u8, 1);
 
-    const span_one = utils.getSpan(alloc_one.ptr);
+    const span_one = utils.getSpan(alloc_one.ptr, true);
 
     allocator.free(alloc_one);
 
@@ -674,7 +674,7 @@ test "empty large span gets cached to global and reused" {
 
     const alloc_one = try allocator.alloc(u8, span_size * 2);
 
-    const span_one = utils.getSpan(alloc_one.ptr);
+    const span_one = utils.getSpan(alloc_one.ptr, true);
 
     const cache_idx = span_one.span_count - 1;
 

@@ -8,7 +8,6 @@ const static_config = @import("static_config.zig");
 const utils = @import("utils.zig");
 const span_file = @import("span.zig");
 
-const Span = span_file.Span;
 const JdzAllocConfig = jdz.JdzAllocConfig;
 const Value = std.atomic.Value;
 
@@ -20,6 +19,7 @@ pub fn JdzAllocator(comptime config: JdzAllocConfig) type {
     const Arena = span_arena.Arena(config, false);
 
     const SharedArenaHandler = shared_arena_handler.SharedArenaHandler(config);
+    const Span = span_file.Span(config.thread_safe);
 
     assert(config.span_alloc_count >= 1);
 
@@ -110,7 +110,7 @@ pub fn JdzAllocator(comptime config: JdzAllocConfig) type {
 
                 if (@intFromPtr(ptr) & align_mask != 0) {
                     ptr = @ptrFromInt((@intFromPtr(ptr) & ~align_mask) + alignment);
-                    const span = @call(.always_inline, utils.getSpan, .{ptr});
+                    const span = @call(.always_inline, utils.getSpan, .{ptr, config.thread_safe});
 
                     span.aligned_blocks = true;
                 }
@@ -127,7 +127,7 @@ pub fn JdzAllocator(comptime config: JdzAllocConfig) type {
             const alignment = @as(usize, 1) << @intCast(@intFromEnum(log2_align));
             const aligned = (@intFromPtr(buf.ptr) & (alignment - 1)) == 0;
 
-            const span = @call(.always_inline, utils.getSpan, .{buf.ptr});
+            const span = @call(.always_inline, utils.getSpan, .{buf.ptr, config.thread_safe});
 
             if (buf.len <= span_max) return new_len <= span.class.block_size and aligned;
             if (buf.len <= large_max) return new_len <= span.alloc_size - (span.alloc_ptr - span.initial_ptr) and aligned;
@@ -151,7 +151,7 @@ pub fn JdzAllocator(comptime config: JdzAllocConfig) type {
             _ = ret_addr;
             _ = log2_align;
 
-            const span = @call(.always_inline, utils.getSpan, .{buf.ptr});
+            const span = @call(.always_inline, utils.getSpan, .{buf.ptr, config.thread_safe});
             const arena: *Arena = @ptrCast(@alignCast(span.arena));
 
             if (span.class.block_size <= medium_max) {
@@ -598,6 +598,36 @@ test "huge alloc does not try to access span" {
 
     allocator.free(buf1);
     allocator.free(buf2);
+}
+
+test "non-thread-safe multiple allocations" {
+    var jdz_allocator = JdzAllocator(.{
+        .thread_safe = false
+    }).init();
+    defer jdz_allocator.deinit();
+
+    const allocator = jdz_allocator.allocator();
+
+    var pointers: [50]*u64 = undefined;
+    
+    // Allocate and initialize
+    for (&pointers) |*ptr| {
+        ptr.* = try allocator.create(u64);
+        ptr.*.* = @truncate((@intFromPtr(ptr.*) >> 3) & 0xFFFF);
+    }
+
+    // Check values
+    for (&pointers) |*ptr| {
+        try std.testing.expectEqual(
+            @as(u64, @truncate((@intFromPtr(ptr.*) >> 3) & 0xFFFF)), 
+            ptr.*.*
+        );
+    }
+
+    // Free
+    for (&pointers) |ptr| {
+        allocator.destroy(ptr);
+    }
 }
 
 test "small alignment small alloc" {

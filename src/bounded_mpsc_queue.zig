@@ -12,7 +12,7 @@ const cache_line = std.atomic.cache_line;
 /// This is a modification of Dmitry Vyukov's https://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
 pub fn BoundedMpscQueue(
     comptime T: type, comptime buffer_size: usize,
-    comptime _thread_safe: bool
+    comptime thread_safe: bool
 ) type {
     assert(utils.isPowerOfTwo(buffer_size));
 
@@ -29,7 +29,6 @@ pub fn BoundedMpscQueue(
         buffer: [buffer_size]Cell,
 
         const Self = @This();
-        const thread_safe = _thread_safe;
 
         pub fn init() Self {
             var buf: [buffer_size]Cell = undefined;
@@ -57,10 +56,11 @@ pub fn BoundedMpscQueue(
                 if (diff == 0) {
                     cell.data = data;
                     cell.sequence.raw = pos + 1;
+                    self.enqueue_pos.raw += 1;
                     return true;
-                }else{
-                    return false;
                 }
+
+                return false;
             }
 
             var pos = self.enqueue_pos.load(.monotonic);

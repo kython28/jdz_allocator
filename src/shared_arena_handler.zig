@@ -47,7 +47,7 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
 
         threadlocal var cached_thread_arenas: [MAX_SLOTS]?*Arena = @splat(null);
 
-        first_arenas_set: ArenasSet,
+        first_arenas_set: if (config.thread_safe) ArenasSet else Arena,
         last_arenas_set: ?*ArenasSet = null,
 
         mutex: Mutex,
@@ -57,17 +57,29 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
 
 
         pub fn init() Self {
-            const slot: usize = @atomicRmw(usize, &slots_counter, .Add, 1, .acquire);
-            if (slot == MAX_SLOTS) {
-                // Maximum number of SharedArenaHandler instances has been reached.
-                // This implementation limits the total number of concurrent 
-                // JdzAllocator instances to MAX_SLOTS (256).
-                @panic("Maximum number of SharedArenaHandler instances exceeded");
-            }
+            const slot = blk: {
+                if (config.thread_safe) {
+                    const _slot: usize = @atomicRmw(usize, &slots_counter, .Add, 1, .acquire);
+                    if (_slot == MAX_SLOTS) {
+                        // Maximum number of SharedArenaHandler instances has been reached.
+                        // This implementation limits the total number of concurrent 
+                        // JdzAllocator instances to MAX_SLOTS (256).
+                        @panic("Maximum number of SharedArenaHandler instances exceeded");
+                    }
 
-            thread_aid_counter[slot] = @bitCast(ArenaDispatcher{.capacity = config.shared_arena_batch_size, .index = 0});
+                    thread_aid_counter[_slot] = @bitCast(ArenaDispatcher{.capacity = config.shared_arena_batch_size, .index = 0});
+                    break :blk _slot;
+                }
+                break :blk 0;
+            };
+
             return .{
-                .first_arenas_set = ArenasSet.init(),
+                .first_arenas_set = blk: {
+                    if (config.thread_safe) {
+                        break :blk ArenasSet.init();
+                    }
+                    break :blk Arena.init();
+                },
                 .mutex = .{},
                 .handler_slot = slot,
             };
@@ -77,8 +89,13 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
             self.mutex.lock();
             defer self.mutex.unlock();
 
-            var spans_leaked: usize = 0;
             const first_arenas_set = &self.first_arenas_set;
+
+            if (!config.thread_safe) {
+                return first_arenas_set.deinit();
+            }
+
+            var spans_leaked: usize = 0;
             var opt_arenas_set: ?*ArenasSet = first_arenas_set;
 
             while (opt_arenas_set) |arenas_set| {
@@ -100,6 +117,10 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
         }
 
         pub fn getArena(self: *Self) ?*Arena {
+            if (!config.thread_safe) {
+                return &self.first_arenas_set;
+            }
+
             const slot = self.handler_slot;
             if (cached_thread_arenas[slot]) |arena| {
                 if (arena.tryAcquire()) {
