@@ -121,7 +121,7 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
         }
 
         inline fn claimOrCreateArena(self: *Self, dispatcher: ArenaDispatcher) ?*Arena {
-            const index = dispatcher.index % dispatcher.capacity;
+            const index = dispatcher.index & (dispatcher.capacity - 1);
             const mod = index & batch_size_mask;
             const n_jumps = (index - mod) / config.shared_arena_batch_size;
 
