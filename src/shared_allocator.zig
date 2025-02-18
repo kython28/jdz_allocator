@@ -793,3 +793,66 @@ test "consecutive small allocations parallel with multi-allocators" {
     }
 }
 
+test "synchronized memory allocation and deallocation" {
+    var jdz_allocator = JdzAllocator(.{
+        .thread_safe = true,
+        .shared_arena_batch_size = 2
+    }).init();
+    defer jdz_allocator.deinit();
+
+    const allocator = jdz_allocator.allocator();
+
+    var mutex = std.Thread.Mutex{};
+    var condition = std.Thread.Condition{};
+    var shared_list = std.ArrayList(*u64).init(std.testing.allocator);
+    defer shared_list.deinit();
+
+    const allocator_thread = struct {
+        fn run(
+            alloc: std.mem.Allocator, 
+            list: *std.ArrayList(*u64), 
+            mtx: *std.Thread.Mutex, 
+            cond: *std.Thread.Condition
+        ) !void {
+            for (0..500) |_| {
+                const ptr = try alloc.create(u64);
+                mtx.lock();
+                defer mtx.unlock();
+                try list.append(ptr);
+                cond.signal();
+            }
+        }
+    }.run;
+
+    const deallocator_thread = struct {
+        fn run(
+            alloc: std.mem.Allocator, 
+            list: *std.ArrayList(*u64), 
+            mtx: *std.Thread.Mutex, 
+            cond: *std.Thread.Condition
+        ) !void {
+            for (0..500) |_| {
+                const ptr = blk: {
+                    mtx.lock();
+                    defer mtx.unlock();
+
+                    while (list.items.len == 0) {
+                        cond.wait(mtx);
+                    }
+
+                    break :blk list.orderedRemove(0);
+                };
+                alloc.destroy(ptr);
+            }
+        }
+    }.run;
+
+    const allocator_t = try std.Thread.spawn(.{}, allocator_thread, .{allocator, &shared_list, &mutex, &condition});
+    const deallocator_t = try std.Thread.spawn(.{}, deallocator_thread, .{allocator, &shared_list, &mutex, &condition});
+
+    allocator_t.join();
+    deallocator_t.join();
+
+    try std.testing.expectEqual(@as(usize, 0), shared_list.items.len);
+}
+
