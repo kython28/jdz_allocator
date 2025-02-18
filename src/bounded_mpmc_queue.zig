@@ -43,7 +43,7 @@ pub fn BoundedMpmcQueue(comptime T: type, comptime buffer_size: usize) type {
         /// Attempts to write to the queue, without overwriting any data
         /// Returns `true` if the data is written, `false` if the queue was full
         pub fn tryWrite(self: *Self, data: T) bool {
-            var pos = self.enqueue_pos.load(.monotonic);
+            var pos = self.enqueue_pos.load(.acquire);
 
             var cell: *Cell = undefined;
 
@@ -52,7 +52,7 @@ pub fn BoundedMpmcQueue(comptime T: type, comptime buffer_size: usize) type {
                 const seq = cell.sequence.load(.acquire);
                 const diff = @as(i128, seq) - @as(i128, pos);
 
-                if (diff == 0 and utils.tryCASAddOne(&self.enqueue_pos, pos, .monotonic) == null) {
+                if (diff == 0 and utils.tryCASAddOne(&self.enqueue_pos, pos, .release) == null) {
                     break;
                 } else if (diff < 0) {
                     return false;
@@ -71,14 +71,14 @@ pub fn BoundedMpmcQueue(comptime T: type, comptime buffer_size: usize) type {
         /// Returns `null` if there was no element to read
         pub fn tryRead(self: *Self) ?T {
             var cell: *Cell = undefined;
-            var pos = self.dequeue_pos.load(.monotonic);
+            var pos = self.dequeue_pos.load(.acquire);
 
             while (true) {
                 cell = &self.buffer[pos & buffer_mask];
                 const seq = cell.sequence.load(.acquire);
                 const diff = @as(i128, seq) - @as(i128, (pos + 1));
 
-                if (diff == 0 and utils.tryCASAddOne(&self.dequeue_pos, pos, .monotonic) == null) {
+                if (diff == 0 and utils.tryCASAddOne(&self.dequeue_pos, pos, .release) == null) {
                     break;
                 } else if (diff < 0) {
                     return null;
