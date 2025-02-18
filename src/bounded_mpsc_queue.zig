@@ -10,7 +10,10 @@ const cache_line = std.atomic.cache_line;
 
 /// Array based bounded multiple producer single consumer queue
 /// This is a modification of Dmitry Vyukov's https://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
-pub fn BoundedMpscQueue(comptime T: type, comptime buffer_size: usize) type {
+pub fn BoundedMpscQueue(
+    comptime T: type, comptime buffer_size: usize,
+    comptime _thread_safe: bool
+) type {
     assert(utils.isPowerOfTwo(buffer_size));
 
     const buffer_mask = buffer_size - 1;
@@ -26,6 +29,7 @@ pub fn BoundedMpscQueue(comptime T: type, comptime buffer_size: usize) type {
         buffer: [buffer_size]Cell,
 
         const Self = @This();
+        const thread_safe = _thread_safe;
 
         pub fn init() Self {
             var buf: [buffer_size]Cell = undefined;
@@ -44,6 +48,21 @@ pub fn BoundedMpscQueue(comptime T: type, comptime buffer_size: usize) type {
         /// Attempts to write to the queue, without overwriting any data
         /// Returns `true` if the data is written, `false` if the queue was full
         pub fn tryWrite(self: *Self, data: T) bool {
+            if (!thread_safe) {
+                const pos = self.enqueue_pos.raw;
+                const cell = &self.buffer[pos & buffer_mask];
+                const seq = cell.sequence.raw;
+                const diff = @as(i128, seq) - @as(i128, pos);
+
+                if (diff == 0) {
+                    cell.data = data;
+                    cell.sequence.raw = pos + 1;
+                    return true;
+                }else{
+                    return false;
+                }
+            }
+
             var pos = self.enqueue_pos.load(.monotonic);
 
             var cell: *Cell = undefined;
@@ -72,7 +91,12 @@ pub fn BoundedMpscQueue(comptime T: type, comptime buffer_size: usize) type {
         /// Returns `null` if there was no element to read
         pub fn tryRead(self: *Self) ?T {
             const cell = &self.buffer[self.dequeue_pos & buffer_mask];
-            const seq = cell.sequence.load(.acquire);
+            const seq = blk: {
+                if (thread_safe) {
+                    break :blk cell.sequence.load(.acquire);
+                }
+                break :blk cell.sequence.raw;
+            };
             const diff = @as(i128, seq) - @as(i128, (self.dequeue_pos + 1));
 
             if (diff == 0) {
@@ -82,7 +106,12 @@ pub fn BoundedMpscQueue(comptime T: type, comptime buffer_size: usize) type {
             }
 
             const res = cell.data;
-            cell.sequence.store(self.dequeue_pos + buffer_mask, .release);
+
+            if (thread_safe) {
+                cell.sequence.store(self.dequeue_pos + buffer_mask, .release);
+            }else{
+                cell.sequence.raw = self.dequeue_pos + buffer_mask;
+            }
 
             return res;
         }
