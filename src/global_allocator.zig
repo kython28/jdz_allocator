@@ -10,18 +10,21 @@ const utils = @import("utils.zig");
 const span_file = @import("span.zig");
 
 const JdzAllocConfig = jdz.JdzAllocConfig;
-const Value = std.atomic.Value;
 
 const log2 = std.math.log2;
 const testing = std.testing;
 const assert = utils.assert;
 
 pub fn JdzGlobalAllocator(comptime config: JdzAllocConfig) type {
+    if (!config.thread_safe) {
+        @compileError("Global Allocator was designed to work only in thread-safe environments");
+    }
+
     const Arena = span_arena.Arena(config, true);
 
     const ArenaHandler = global_handler.GlobalArenaHandler(config);
 
-    const Span = span_file.Span(config.thread_safe);
+    const Span = span_file.Span(true);
     const GlobalSpanCache = bounded_mpmc_queue.BoundedMpmcQueue(*Span, config.cache_limit * config.global_cache_multiplier);
 
     const GlobalLargeCache = bounded_mpmc_queue.BoundedMpmcQueue(*Span, config.large_cache_limit * config.global_cache_multiplier);
@@ -107,7 +110,7 @@ pub fn JdzGlobalAllocator(comptime config: JdzAllocConfig) type {
 
                 if (@intFromPtr(ptr) & align_mask != 0) {
                     ptr = @ptrFromInt((@intFromPtr(ptr) & ~align_mask) + alignment);
-                    const span = @call(.always_inline, utils.getSpan, .{ptr, config.thread_safe});
+                    const span = @call(.always_inline, utils.getSpan, .{ptr, true});
 
                     span.aligned_blocks = true;
                 }
@@ -125,7 +128,7 @@ pub fn JdzGlobalAllocator(comptime config: JdzAllocConfig) type {
             const alignment = @as(usize, 1) << @intCast(@intFromEnum(log2_align));
             const aligned = (@intFromPtr(buf.ptr) & (alignment - 1)) == 0;
 
-            const span = @call(.always_inline, utils.getSpan, .{buf.ptr, config.thread_safe});
+            const span = @call(.always_inline, utils.getSpan, .{buf.ptr, true});
 
             if (buf.len <= span_max) return new_len <= span.class.block_size and aligned;
             if (buf.len <= large_max) return new_len <= span.alloc_size - (span.alloc_ptr - span.initial_ptr) and aligned;
@@ -148,7 +151,7 @@ pub fn JdzGlobalAllocator(comptime config: JdzAllocConfig) type {
             _ = ret_addr;
             _ = log2_align;
 
-            const span = @call(.always_inline, utils.getSpan, .{buf.ptr, config.thread_safe});
+            const span = @call(.always_inline, utils.getSpan, .{buf.ptr, true});
 
             const arena: *Arena = @ptrCast(@alignCast(span.arena));
 
