@@ -7,14 +7,9 @@ const JdzAllocConfig = jdz_allocator.JdzAllocConfig;
 
 const assert = utils.assert;
 
-const SlotState = enum {
-    Available, Occupied
-};
-
 var slots_counter: usize = 0;
-const MAX_SLOTS = 256;
+pub const MAX_SLOTS = 256;
 
-var slots_state: [MAX_SLOTS]SlotState = @splat(SlotState.Available);
 var thread_aid_counter: [MAX_SLOTS]u64 = @splat(0);
 
 const ArenaDispatcher = packed struct {
@@ -52,19 +47,19 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
         first_arenas_set: ArenasSet,
         last_arenas_set: ?*ArenasSet = null,
 
-        last_free_arena: ?*Arena = null,
-
         mutex: Mutex,
-        arenas_batch: usize = 1,
         handler_slot: usize,
 
         const Self = @This();
 
 
         pub fn init() Self {
-            const slot: usize = @atomicRmw(usize, &slots_counter, .Add, 1, .acquire) % MAX_SLOTS;
-            if (@cmpxchgStrong(SlotState, &slots_state[slot], SlotState.Available, SlotState.Occupied, .acquire, .monotonic)) |_| {
-                @panic("No free slots available");
+            const slot: usize = @atomicRmw(usize, &slots_counter, .Add, 1, .acquire);
+            if (slot == MAX_SLOTS) {
+                // Maximum number of SharedArenaHandler instances has been reached.
+                // This implementation limits the total number of concurrent 
+                // JdzAllocator instances to MAX_SLOTS (256).
+                @panic("Maximum number of SharedArenaHandler instances exceeded");
             }
 
             thread_aid_counter[slot] = @bitCast(ArenaDispatcher{.capacity = config.shared_arena_batch_size, .index = 0});
@@ -95,8 +90,6 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
                 }
                 opt_arenas_set = next;
             }
-
-            @atomicStore(SlotState, &slots_state[self.handler_slot], SlotState.Available, .release);
 
             @memset(&first_arenas_set.arenas, undefined);
             first_arenas_set.next = null;
