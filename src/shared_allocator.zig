@@ -762,7 +762,7 @@ test "consecutive small allocations parallel with multi-allocators" {
 
     var jdz_allocator2 = JdzAllocator(.{
         .thread_safe = true,
-        .shared_arena_batch_size = 10
+        .shared_arena_batch_size = 16
     }).init();
     defer jdz_allocator2.deinit();
 
