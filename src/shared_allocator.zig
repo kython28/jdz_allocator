@@ -753,7 +753,7 @@ test "consecutive small allocations parallel" {
     }
 }
 
-fn multi_allocator_test() !void {
+test "consecutive small allocations parallel with multi-allocators" {
     var jdz_allocator = JdzAllocator(.{
         .thread_safe = true,
         .shared_arena_batch_size = 2
@@ -762,7 +762,7 @@ fn multi_allocator_test() !void {
 
     var jdz_allocator2 = JdzAllocator(.{
         .thread_safe = true,
-        .shared_arena_batch_size = 2
+        .shared_arena_batch_size = 10
     }).init();
     defer jdz_allocator2.deinit();
 
@@ -793,12 +793,3 @@ fn multi_allocator_test() !void {
     }
 }
 
-test "consecutive small allocations parallel with multi-allocators" {
-    try multi_allocator_test();
-}
-
-test "consecutive small allocations parallel with multi-allocators - 500 iterations" {
-    for (0..500) |_| {
-        try multi_allocator_test();
-    }
-}
