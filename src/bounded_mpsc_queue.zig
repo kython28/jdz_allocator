@@ -118,8 +118,8 @@ pub fn BoundedMpscQueue(
     };
 }
 
-test "tryWrite/tryRead" {
-    var queue = BoundedMpscQueue(u64, 16).init();
+test "tryWrite/tryRead thread-safe" {
+    var queue = BoundedMpscQueue(u64, 16, true).init();
 
     _ = queue.tryWrite(17);
     _ = queue.tryWrite(36);
@@ -128,14 +128,30 @@ test "tryWrite/tryRead" {
     try testing.expect(queue.tryRead().? == 36);
 }
 
-test "tryRead empty" {
-    var queue = BoundedMpscQueue(u64, 16).init();
+test "tryWrite/tryRead non-thread-safe" {
+    var queue = BoundedMpscQueue(u64, 16, false).init();
+
+    _ = queue.tryWrite(17);
+    _ = queue.tryWrite(36);
+
+    try testing.expect(queue.tryRead().? == 17);
+    try testing.expect(queue.tryRead().? == 36);
+}
+
+test "tryRead empty thread-safe" {
+    var queue = BoundedMpscQueue(u64, 16, true).init();
 
     try testing.expect(queue.tryRead() == null);
 }
 
-test "tryRead emptied" {
-    var queue = BoundedMpscQueue(u64, 2).init();
+test "tryRead empty non-thread-safe" {
+    var queue = BoundedMpscQueue(u64, 16, false).init();
+
+    try testing.expect(queue.tryRead() == null);
+}
+
+test "tryRead emptied thread-safe" {
+    var queue = BoundedMpscQueue(u64, 2, true).init();
 
     _ = queue.tryWrite(1);
     _ = queue.tryWrite(2);
@@ -145,8 +161,30 @@ test "tryRead emptied" {
     try testing.expect(queue.tryRead() == null);
 }
 
-test "tryWrite to full" {
-    var queue = BoundedMpscQueue(u64, 2).init();
+test "tryRead emptied non-thread-safe" {
+    var queue = BoundedMpscQueue(u64, 2, false).init();
+
+    _ = queue.tryWrite(1);
+    _ = queue.tryWrite(2);
+
+    try testing.expect(queue.tryRead().? == 1);
+    try testing.expect(queue.tryRead().? == 2);
+    try testing.expect(queue.tryRead() == null);
+}
+
+test "tryWrite to full thread-safe" {
+    var queue = BoundedMpscQueue(u64, 2, true).init();
+
+    _ = queue.tryWrite(1);
+    _ = queue.tryWrite(2);
+
+    try testing.expect(queue.tryWrite(3) == false);
+    try testing.expect(queue.tryRead().? == 1);
+    try testing.expect(queue.tryRead().? == 2);
+}
+
+test "tryWrite to full non-thread-safe" {
+    var queue = BoundedMpscQueue(u64, 2, false).init();
 
     _ = queue.tryWrite(1);
     _ = queue.tryWrite(2);
