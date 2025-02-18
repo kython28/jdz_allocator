@@ -21,7 +21,7 @@ const log2_usize_type = @Type(std.builtin.Type{ .Int = std.builtin.Type.Int{
 } });
 
 const DummyMutex = struct {
-    pub inline fn tryLock(_: @This()) void {}
+    pub inline fn tryLock(_: @This()) bool {}
     pub inline fn lock(_: @This()) void {}
     pub inline fn unlock(_: @This()) void {}
 };
