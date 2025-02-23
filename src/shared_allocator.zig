@@ -729,6 +729,7 @@ test "consecutive overalignment" {
 }
 
 test "small allocations parallel" {
+    const test_iterations = 50;
     var jdz_allocator = JdzAllocator(.{
         .thread_safe = true,
         .shared_arena_batch_size = 2
@@ -744,22 +745,24 @@ test "small allocations parallel" {
         }
     }.thread_spawn;
 
-    var threads: [5]std.Thread = undefined;
-    for (0..5) |i| {
-        threads[i] = try std.Thread.spawn(.{}, spawn, .{allocator});
-    }
-    for (threads) |t| {
-        t.join();
+    for (0..test_iterations) |_| {
+        var threads: [5]std.Thread = undefined;
+        for (0..5) |i| {
+            threads[i] = try std.Thread.spawn(.{}, spawn, .{allocator});
+        }
+        for (threads) |t| {
+            t.join();
+        }
     }
 }
 
 test "consecutive small allocations parallel" {
+    const test_iterations = 50;
     var jdz_allocator = JdzAllocator(.{
         .thread_safe = true,
         .shared_arena_batch_size = 2
     }).init();
     defer jdz_allocator.deinit();
-
     const allocator = jdz_allocator.allocator();
 
     const spawn = struct {
@@ -774,16 +777,19 @@ test "consecutive small allocations parallel" {
         }
     }.thread_spawn;
 
-    var threads: [8]std.Thread = undefined;
-    for (0..8) |i| {
-        threads[i] = try std.Thread.spawn(.{}, spawn, .{allocator});
-    }
-    for (threads) |t| {
-        t.join();
+    for (0..test_iterations) |_| {
+        var threads: [8]std.Thread = undefined;
+        for (0..8) |i| {
+            threads[i] = try std.Thread.spawn(.{}, spawn, .{allocator});
+        }
+        for (threads) |t| {
+            t.join();
+        }
     }
 }
 
 test "consecutive small allocations parallel with multi-allocators" {
+    const test_iterations = 50;
     var jdz_allocator = JdzAllocator(.{
         .thread_safe = true,
         .shared_arena_batch_size = 2
@@ -814,28 +820,28 @@ test "consecutive small allocations parallel with multi-allocators" {
         }
     }.thread_spawn;
 
-    var threads: [8]std.Thread = undefined;
-    for (0..8) |i| {
-        threads[i] = try std.Thread.spawn(.{}, spawn, .{allocator, allocator2});
-    }
-    for (threads) |t| {
-        t.join();
+    for (0..test_iterations) |_| {
+        var threads: [8]std.Thread = undefined;
+        for (0..8) |i| {
+            threads[i] = try std.Thread.spawn(.{}, spawn, .{allocator, allocator2});
+        }
+        for (threads) |t| {
+            t.join();
+        }
     }
 }
 
 test "synchronized memory allocation and deallocation" {
+    const test_iterations = 50;
     var jdz_allocator = JdzAllocator(.{
         .thread_safe = true,
         .shared_arena_batch_size = 2
     }).init();
     defer jdz_allocator.deinit();
-
     const allocator = jdz_allocator.allocator();
 
     var mutex = std.Thread.Mutex{};
     var condition = std.Thread.Condition{};
-    var shared_list = std.ArrayList(*u64).init(std.testing.allocator);
-    defer shared_list.deinit();
 
     const allocator_thread = struct {
         fn run(
@@ -877,12 +883,17 @@ test "synchronized memory allocation and deallocation" {
         }
     }.run;
 
-    const allocator_t = try std.Thread.spawn(.{}, allocator_thread, .{allocator, &shared_list, &mutex, &condition});
-    const deallocator_t = try std.Thread.spawn(.{}, deallocator_thread, .{allocator, &shared_list, &mutex, &condition});
+    for (0..test_iterations) |_| {
+        var shared_list = std.ArrayList(*u64).init(std.testing.allocator);
+        defer shared_list.deinit();
 
-    allocator_t.join();
-    deallocator_t.join();
+        const allocator_t = try std.Thread.spawn(.{}, allocator_thread, .{allocator, &shared_list, &mutex, &condition});
+        const deallocator_t = try std.Thread.spawn(.{}, deallocator_thread, .{allocator, &shared_list, &mutex, &condition});
 
-    try std.testing.expectEqual(@as(usize, 0), shared_list.items.len);
+        allocator_t.join();
+        deallocator_t.join();
+
+        try std.testing.expectEqual(@as(usize, 0), shared_list.items.len);
+    }
 }
 
