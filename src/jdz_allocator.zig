@@ -48,7 +48,7 @@ pub const JdzAllocConfig = struct {
 
     /// JdzSharedAllocator batch arena instantiation amount
     /// prevents allocator-induced false sharing if greater than total number of allocating threads
-    shared_arena_batch_size: u32 = if (builtin.is_test) 2 else 8,
+    shared_arena_batch_size: u32 = 8,
 
     /// if leaks should be reported - only works with JdzSharedAllocator
     report_leaks: bool = builtin.mode == .Debug,
