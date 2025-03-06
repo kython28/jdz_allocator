@@ -65,9 +65,9 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
 
             return .{
                 .backing_allocator = config.backing_allocator,
-                .spans = .{.{}} ** size_class_count,
-                .free_lists = .{@constCast(&free_list_null)} ** size_class_count,
-                .deferred_partial_spans = .{.{}} ** size_class_count,
+                .spans = @splat(SpanList{}),
+                .free_lists = @splat(@constCast(&free_list_null)),
+                .deferred_partial_spans = @splat(DeferredSpanList{}),
                 .span_count = Value(usize).init(0),
                 .cache = ArenaSpanCache.init(),
                 .large_cache = large_cache,
