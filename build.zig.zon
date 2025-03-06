@@ -1,6 +1,7 @@
 .{
-    .name = "jdz_allocator",
-    .version = "0.3.0",
+    .name = .jdz_allocator,
+    .version = "0.3.1",
+    .fingerprint = 0x6f68fb3d25cd4a8f,
     .dependencies = .{},
     .paths = .{""},
 }
