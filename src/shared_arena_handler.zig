@@ -7,7 +7,8 @@ const JdzAllocConfig = jdz_allocator.JdzAllocConfig;
 
 const assert = utils.assert;
 
-var slots_counter: usize = 0;
+// Index 0 is reserved for comptime initialization (Only one instance can be created at comptime)
+var slots_counter: usize = 1; 
 pub const MAX_SLOTS = 256;
 
 var thread_aid_counter: [MAX_SLOTS]u64 = @splat(0);
@@ -16,7 +17,7 @@ const ArenaDispatcher = packed struct {
     index: u32,
     capacity: u32,
 };
-const dispatcher_max_index = std.math.maxInt(u32)/2;
+const dispatcher_max_index = std.math.maxInt(u32) / 2;
 
 pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
     // Verify batch size is power of two for optimization
@@ -34,7 +35,7 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
             pub fn init() ArenasSet {
                 var set: ArenasSet = .{
                     .arenas = undefined,
-                    .next = null
+                    .next = null,
                 };
 
                 for (&set.arenas) |*arena| {
@@ -55,17 +56,28 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
 
         const Self = @This();
 
-
         pub fn init() Self {
+            if (@inComptime()) {
+                // Only one instance can be created at comptime
+                return .{
+                    .first_arenas_set = ArenasSet.init(),
+                    .mutex = .{},
+                    .handler_slot = 0,
+                };
+            }
+
             const slot: usize = @atomicRmw(usize, &slots_counter, .Add, 1, .acquire);
             if (slot == MAX_SLOTS) {
                 // Maximum number of SharedArenaHandler instances has been reached.
-                // This implementation limits the total number of concurrent 
+                // This implementation limits the total number of concurrent
                 // JdzAllocator instances to MAX_SLOTS (256).
                 @panic("Maximum number of SharedArenaHandler instances exceeded");
             }
 
-            thread_aid_counter[slot] = @bitCast(ArenaDispatcher{.capacity = config.shared_arena_batch_size, .index = 0});
+            thread_aid_counter[slot] = @bitCast(ArenaDispatcher{
+                .capacity = config.shared_arena_batch_size,
+                .index = 0,
+            });
             return .{
                 .first_arenas_set = ArenasSet.init(),
                 .mutex = .{},
@@ -108,12 +120,22 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
             }
 
             const ptr = &thread_aid_counter[slot];
-            const prev_v = @atomicRmw(u64, ptr, .Add, @bitCast(ArenaDispatcher{.index = 1, .capacity = 0}), .acquire);
+            const prev_v = @atomicRmw(
+                u64,
+                ptr,
+                .Add,
+                @bitCast(ArenaDispatcher{ .index = 1, .capacity = 0 }),
+                .acq_rel,
+            );
             const dispatcher: ArenaDispatcher = @bitCast(prev_v);
 
             if (dispatcher.index == dispatcher_max_index) {
                 _ = @atomicRmw(
-                    u64, ptr, .Sub, @bitCast(ArenaDispatcher{.capacity = 0, .index = dispatcher_max_index}), .release
+                    u64,
+                    ptr,
+                    .Sub,
+                    @bitCast(ArenaDispatcher{ .capacity = 0, .index = dispatcher_max_index }),
+                    .release,
                 );
             }
 
@@ -121,20 +143,22 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
         }
 
         inline fn claimOrCreateArena(self: *Self, dispatcher: ArenaDispatcher) ?*Arena {
-            const index = dispatcher.index & (dispatcher.capacity - 1);
-            const mod = index & batch_size_mask;
-            const n_jumps = (index - mod) / config.shared_arena_batch_size;
+            if (dispatcher.capacity == 0) {
+                const index = dispatcher.index & (dispatcher.capacity - 1);
+                const mod = index & batch_size_mask;
+                const n_jumps = (index - mod) / config.shared_arena_batch_size;
 
-            var opt_arenas_set: *ArenasSet = &self.first_arenas_set;
-            for (0..n_jumps) |_| opt_arenas_set = opt_arenas_set.next.?;
+                var opt_arenas_set: *ArenasSet = &self.first_arenas_set;
+                for (0..n_jumps) |_| opt_arenas_set = opt_arenas_set.next.?;
 
-            const arena = &opt_arenas_set.arenas[mod];
-            if (!arena.tryAcquire()) {
-                return self.createArena();
+                const arena = &opt_arenas_set.arenas[mod];
+                if (arena.tryAcquire()) {
+                    cached_thread_arenas[self.handler_slot] = arena;
+                    return arena;
+                }
             }
 
-            cached_thread_arenas[self.handler_slot] = arena;
-            return arena;
+            return self.createArena();
         }
 
         fn createArena(self: *Self) ?*Arena {
@@ -161,9 +185,15 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
 
             const new_dispatcher = ArenaDispatcher{
                 .index = 0,
-                .capacity = config.shared_arena_batch_size
+                .capacity = config.shared_arena_batch_size,
             };
-            _ = @atomicRmw(u64, &thread_aid_counter[self.handler_slot], .Add, @bitCast(new_dispatcher), .release);
+            _ = @atomicRmw(
+                u64,
+                &thread_aid_counter[self.handler_slot],
+                .Add,
+                @bitCast(new_dispatcher),
+                .release,
+            );
 
             return arena;
         }
