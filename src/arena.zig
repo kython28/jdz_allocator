@@ -622,14 +622,14 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
         }
 
         inline fn handleSpanNoLongerFull(self: *Self, span: *Span) void {
-            if (span.full and @atomicRmw(bool, &span.full, .Xchg, false, .monotonic)) {
+            if (span.full and @atomicRmw(bool, &span.full, .Xchg, false, .acq_rel)) {
                 self.spans[span.class.class_idx].write(span);
                 self.free_lists[span.class.class_idx] = self.spans[span.class.class_idx].getHeadFreeList();
             }
         }
 
         inline fn handleSpanNoLongerFullDeferred(self: *Self, span: *Span) void {
-            if (span.full and @atomicRmw(bool, &span.full, .Xchg, false, .monotonic)) {
+            if (span.full and @atomicRmw(bool, &span.full, .Xchg, false, .acq_rel)) {
                 self.deferred_partial_spans[span.class.class_idx].write(span);
             }
         }

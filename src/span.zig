@@ -223,7 +223,7 @@ pub const Span = extern struct {
         const block: *usize = @ptrCast(@alignCast(ptr));
 
         while (true) {
-            block.* = @atomicRmw(usize, &self.deferred_free_list, .Xchg, invalid_pointer, .acquire);
+            block.* = @atomicRmw(usize, &self.deferred_free_list, .Xchg, invalid_pointer, .acq_rel);
 
             if (block.* != invalid_pointer) {
                 break;
@@ -241,7 +241,7 @@ pub const Span = extern struct {
         if (self.deferred_free_list == free_list_null) return false;
 
         while (true) {
-            self.free_list = @atomicRmw(usize, &self.deferred_free_list, .Xchg, invalid_pointer, .acquire);
+            self.free_list = @atomicRmw(usize, &self.deferred_free_list, .Xchg, invalid_pointer, .acq_rel);
 
             if (self.free_list != invalid_pointer) {
                 break;

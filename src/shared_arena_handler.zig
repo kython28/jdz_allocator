@@ -66,7 +66,7 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
                 };
             }
 
-            const slot: usize = @atomicRmw(usize, &slots_counter, .Add, 1, .acquire);
+            const slot: usize = @atomicRmw(usize, &slots_counter, .Add, 1, .acq_rel);
             if (slot == MAX_SLOTS) {
                 // Maximum number of SharedArenaHandler instances has been reached.
                 // This implementation limits the total number of concurrent
@@ -143,7 +143,7 @@ pub fn SharedArenaHandler(comptime config: JdzAllocConfig) type {
         }
 
         inline fn claimOrCreateArena(self: *Self, dispatcher: ArenaDispatcher) ?*Arena {
-            if (dispatcher.capacity == 0) {
+            if (dispatcher.capacity > 0) {
                 const index = dispatcher.index & (dispatcher.capacity - 1);
                 const mod = index & batch_size_mask;
                 const n_jumps = (index - mod) / config.shared_arena_batch_size;
