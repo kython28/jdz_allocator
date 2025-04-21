@@ -51,7 +51,7 @@ pub fn Arena(comptime config: JdzAllocConfig, comptime is_threadlocal: bool) typ
         const Self = @This();
 
         pub fn init() Self {
-            @setEvalBranchQuota(4 * @as(u32, large_class_count) * @max(config.map_cache_limit, config.large_cache_limit));
+            @setEvalBranchQuota(32 * @as(u32, large_class_count) * @max(config.map_cache_limit, config.large_cache_limit));
             var large_cache: [large_class_count]ArenaLargeCache = undefined;
             var map_cache: [large_class_count]ArenaMapCache = undefined;
 

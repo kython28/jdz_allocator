@@ -9,10 +9,8 @@ const utils = @import("utils.zig");
 const span_file = @import("span.zig");
 
 const JdzAllocConfig = jdz.JdzAllocConfig;
-const Value = std.atomic.Value;
 
 const log2 = std.math.log2;
-const testing = std.testing;
 const assert = utils.assert;
 
 pub fn JdzAllocator(comptime config: JdzAllocConfig) type {

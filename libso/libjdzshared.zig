@@ -1,11 +1,10 @@
 const std = @import("std");
 const jdz_allocator = @import("jdz_allocator");
 
-const assert = std.assert;
 const log = std.log.scoped(.jdz_allocator);
 
 var allocator_instance = jdz_allocator.JdzAllocator(.{}).init();
-var allocator = allocator_instance.allocator();
+const allocator = allocator_instance.allocator();
 
 ///
 /// Slightly modified copy of https://github.com/dweiller/zimalloc/blob/main/src/libzimalloc.zig
@@ -55,7 +54,9 @@ export fn free(ptr_opt: ?*anyopaque) void {
 export fn calloc(size: usize, count: usize) ?*anyopaque {
     log.debug("calloc {d} {d}", .{ size, count });
     const bytes = size * count;
-    return allocateBytes(bytes, 1, @returnAddress(), true, false, true);
+    const data = allocateBytes(bytes, 1, @returnAddress(), true, false, true) orelse return null;
+    @memset(data[0..bytes], 0);
+    return data;
 }
 
 export fn aligned_alloc(alignment: usize, size: usize) ?*anyopaque {
@@ -90,13 +91,13 @@ export fn memalign(alignment: usize, size: usize) ?*anyopaque {
 
 export fn valloc(size: usize) ?*anyopaque {
     log.debug("valloc {d}", .{size});
-    return allocateBytes(size, std.mem.page_size, @returnAddress(), false, false, true);
+    return allocateBytes(size, std.heap.pageSize(), @returnAddress(), false, false, true);
 }
 
 export fn pvalloc(size: usize) ?*anyopaque {
     log.debug("pvalloc {d}", .{size});
-    const aligned_size = std.mem.alignForward(usize, size, std.mem.page_size);
-    return allocateBytes(aligned_size, std.mem.page_size, @returnAddress(), false, false, true);
+    const aligned_size = std.mem.alignForward(usize, size, std.heap.pageSize());
+    return allocateBytes(aligned_size, std.heap.pageSize(), @returnAddress(), false, false, true);
 }
 
 export fn malloc_usable_size(ptr_opt: ?*anyopaque) usize {
@@ -125,7 +126,7 @@ fn allocateBytes(
     }
 
     const log2_align = std.math.log2_int(usize, alignment);
-    if (allocator.rawAlloc(byte_count, log2_align, ret_addr)) |ptr| {
+    if (allocator.rawAlloc(byte_count, @enumFromInt(log2_align), ret_addr)) |ptr| {
         @memset(ptr[0..byte_count], if (zero) 0 else undefined);
         log.debug("allocated {*}", .{ptr});
         return ptr;
