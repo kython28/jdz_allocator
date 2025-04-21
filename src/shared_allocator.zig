@@ -865,3 +865,29 @@ test "synchronized memory allocation and deallocation" {
     }
 }
 
+test "comptime init" {
+    // Initialize the allocator with comptime init
+    var jdz_allocator = comptime JdzAllocator(.{}).init();
+    defer jdz_allocator.deinit();
+    
+    const allocator = jdz_allocator.allocator();
+    
+    // Test basic allocation and deallocation
+    const small_ptr = try allocator.create(u32);
+    small_ptr.* = 42;
+    try std.testing.expectEqual(@as(u32, 42), small_ptr.*);
+    allocator.destroy(small_ptr);
+    
+    // Test array allocation
+    const array_ptr = try allocator.alloc(u8, 100);
+    @memset(array_ptr, 0xAA);
+    try std.testing.expectEqual(@as(u8, 0xAA), array_ptr[50]);
+    allocator.free(array_ptr);
+    
+    // Test larger allocation
+    const large_ptr = try allocator.alloc(u8, 8000);
+    @memset(large_ptr, 0xBB);
+    try std.testing.expectEqual(@as(u8, 0xBB), large_ptr[4000]);
+    allocator.free(large_ptr);
+}
+
